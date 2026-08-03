@@ -12,9 +12,9 @@
     <ToolCommandName>aftrnuke</ToolCommandName>
     <PackageId>Automation.Fallout.Builder</PackageId>
     <Authors>Luke Lanphear   </Authors>
-    <Description>A global tool to simplify Nuke build setup across projects</Description>
+    <Description>A global tool to simplify Fallout build setup across projects</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <RepositoryUrl>https://dev.azure.com/AFTR/Automation/_git/Automation.Nuke.Builder</RepositoryUrl>
+    <RepositoryUrl>https://dev.azure.com/AFTR/Automation/_git/Automation.Fallout.Builder</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
