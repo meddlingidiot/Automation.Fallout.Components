@@ -65,9 +65,9 @@ A NuGet package providing modular, composable build components for Fallout build
 
 ### Automation.Fallout.Builder
 
-A global .NET tool (`aftrnuke`) that automates the setup of Fallout build infrastructure with intelligent prompts and configuration.
+A global .NET tool (`aftrfallout`) that automates the setup of Fallout build infrastructure with intelligent prompts and configuration.
 
-> **Note:** The tool command is still `aftrnuke` for backward compatibility with existing scripts and pipelines. Only the underlying build system changed.
+> **Note:** The tool command was renamed from `aftrnuke` to `aftrfallout`. Update any scripts or pipelines that still invoke `aftrnuke`.
 
 **Key Features:**
 - Interactive setup with Spectre.Console
@@ -76,6 +76,7 @@ A global .NET tool (`aftrnuke`) that automates the setup of Fallout build infras
 - Installs and configures required tools (GitVersion, Gitleaks)
 - Copies default configuration files
 - Upgrades build projects to .NET 10.0
+- Migrates existing Nuke repositories with `aftrfallout migrate`
 
 **Installation/Updates:**
 
@@ -87,7 +88,7 @@ dotnet tool install --global Automation.Fallout.Builder
 
 ```bash
 cd YourProject
-aftrnuke setup
+aftrfallout setup
 ```
 
 The tool will guide you through:
@@ -97,11 +98,11 @@ The tool will guide you through:
 4. Automatic dependency installation
 
 **What It Does:**
-- Installs/updates the Fallout global tool (`Fallout.GlobalTool`, exposing the `fallout` command)
+- Installs/updates the Fallout CLI (`Fallout.Cli`, exposing the `fallout` command)
 - Runs `fallout :setup` to scaffold the `build/` directory
 - Creates `build/` directory structure with `_build.csproj` targeting .NET 10.0
 - Adds required NuGet packages (`Automation.Fallout.Components`, `Fallout.Common`)
-- Adds `PackageDownload` entries for GitVersion.Tool (6.5.1) and ReportGenerator (5.5.1)
+- Adds `PackageDownload` entries for GitVersion.Tool (6.8.2) and ReportGenerator (5.5.11)
 - Installs local tools via dotnet-tools.json
 - Copies default files: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `azure-pipelines.yml`
 - Generates `Build.cs` implementing selected build template
@@ -128,7 +129,7 @@ The tool will guide you through:
 
 3. Run setup:
    ```bash
-   aftrnuke setup
+   aftrfallout setup
    ```
 
 4. Follow the interactive prompts to configure your build
@@ -144,7 +145,7 @@ If you prefer manual setup:
 
 1. Install Fallout globally:
    ```bash
-   dotnet tool install -g Fallout.GlobalTool
+   dotnet tool install -g Fallout.Cli
    ```
 
 2. Setup Fallout in your project:
@@ -178,7 +179,7 @@ NUKE is no longer maintained; Fallout is its hard-fork successor. The API surfac
 |------|---------|
 | `Nuke.Common` | `Fallout.Common` |
 | `Nuke.Build` | `Fallout.Build` |
-| `Nuke.GlobalTool` | `Fallout.GlobalTool` |
+| `Nuke.GlobalTool` | `Fallout.Cli` |
 | `Automation.Nuke.Components` | `Automation.Fallout.Components` |
 | `Automation.Nuke.Builder` | `Automation.Fallout.Builder` |
 
@@ -306,13 +307,13 @@ See `nuget.config` for details.
 - Gitleaks (for secret scanning) - install separately
 
 **Auto-installed by the tool:**
-- Fallout.GlobalTool (latest)
-- GitVersion.Tool 6.5.1 (PackageDownload)
-- ReportGenerator 5.5.1 (PackageDownload)
+- Fallout.Cli (latest) — the renamed successor to the unlisted `Fallout.GlobalTool`
+- GitVersion.Tool 6.8.2 (PackageDownload)
+- ReportGenerator 5.5.11 (PackageDownload)
 
 ## 📁 Generated Project Structure
 
-After running `aftrnuke setup`, your project will have:
+After running `aftrfallout setup`, your project will have:
 
 ```
 YourProject/
@@ -468,7 +469,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ## 📖 Additional Documentation
 
-- [Builder Tool README](Automation.Fallout.Builder/README.md) - Detailed `aftrnuke` documentation
+- [Builder Tool README](Automation.Fallout.Builder/README.md) - Detailed `aftrfallout` documentation
 - [Fallout Documentation](https://github.com/ChrisonSimtian/Fallout) - Official Fallout build system docs
 - [GitVersion Docs](https://gitversion.net/) - Semantic versioning configuration
 
@@ -482,13 +483,13 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 **"Fallout not found"**
 - Ensure .NET global tools are in PATH
-- Run `dotnet tool install -g Fallout.GlobalTool`
+- Run `dotnet tool install -g Fallout.Cli`
 
 **`Could not find commit information`**
 - The repository has no commits, or was cloned with a shallow fetch. GitVersion requires real history — make an initial commit, and set `fetchDepth: 0` on CI checkout.
 
 **`Missing package reference/download` for GitVersion.Tool**
-- Add `<PackageDownload Include="GitVersion.Tool" Version="[6.5.1]" />` to `build/_build.csproj`.
+- Add `<PackageDownload Include="GitVersion.Tool" Version="[6.8.2]" />` to `build/_build.csproj`.
 
 **Build fails targeting net10.0**
 - Install .NET 10 SDK

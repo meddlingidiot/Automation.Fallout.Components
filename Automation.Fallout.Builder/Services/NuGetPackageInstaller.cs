@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Xml.Linq;
+using Automation.Fallout.Builder.Models;
 using Spectre.Console;
 
 namespace Automation.Fallout.Builder.Services;
@@ -18,7 +19,8 @@ public static class NuGetPackageInstaller
         }
 
         AnsiConsole.MarkupLine("[yellow]Installing Fallout global tool...[/]");
-        var success = await RunDotNetCommandAsync("dotnet tool install Fallout.GlobalTool -g");
+        // Fallout.GlobalTool was renamed to Fallout.Cli and unlisted; the shim is still 'fallout'.
+        var success = await RunDotNetCommandAsync("tool install Fallout.Cli -g");
 
         if (success)
         {
@@ -36,7 +38,7 @@ public static class NuGetPackageInstaller
     {
         AnsiConsole.MarkupLine("[yellow]Updating Fallout global tool...[/]");
 
-        var success = await RunDotNetCommandAsync("tool update Fallout.GlobalTool --global");
+        var success = await RunDotNetCommandAsync("tool update Fallout.Cli --global");
 
         if (success)
         {
@@ -244,46 +246,15 @@ public static class NuGetPackageInstaller
                 content = await File.ReadAllTextAsync(gitignorePath);
             }
 
-            var needsFalloutSection = !content.Contains("# Fallout Build");
-            var needsRiderSection = !content.Contains("# JetBrains Rider");
-            var needsDotNetSection = !content.Contains("# Rider DotSettings");
+            var additions = BuildGitIgnoreAdditions(content);
 
-            if (!needsFalloutSection && !needsRiderSection && !needsDotNetSection)
+            if (additions.Length == 0)
             {
-                AnsiConsole.MarkupLine("[green].gitignore already contains Nuke and Rider entries[/]");
+                AnsiConsole.MarkupLine("[green].gitignore already contains Fallout and Rider entries[/]");
                 return;
             }
 
-            var additions = new System.Text.StringBuilder();
-
-            if (!content.EndsWith("\n") && content.Length > 0)
-            {
-                additions.AppendLine();
-            }
-
-            if (needsFalloutSection)
-            {
-                additions.AppendLine("# Fallout Build");
-                additions.AppendLine(".fallout/build.schema.json");
-                additions.AppendLine(".fallout/temp/");
-                additions.AppendLine(".tmp/");
-                additions.AppendLine("artifacts/");
-                additions.AppendLine();
-            }
-
-            if (needsRiderSection)
-            {
-                additions.AppendLine("# JetBrains Rider");
-                additions.AppendLine(".idea/");
-            }
-            if (needsDotNetSection)
-            {
-                additions.AppendLine();
-                additions.AppendLine("# Rider DotSettings");
-                additions.AppendLine("*.DotSettings");
-            }
-
-            await File.AppendAllTextAsync(gitignorePath, additions.ToString());
+            await File.AppendAllTextAsync(gitignorePath, additions);
 
             AnsiConsole.MarkupLine("[green]Updated .gitignore with Fallout and Rider entries[/]");
         }
@@ -293,63 +264,123 @@ public static class NuGetPackageInstaller
         }
     }
 
+    /// <summary>
+    /// Returns the text that needs appending to an existing .gitignore, or an empty string when the
+    /// Fallout and Rider sections are already present.
+    /// </summary>
+    public static string BuildGitIgnoreAdditions(string content)
+    {
+        var needsFalloutSection = !content.Contains("# Fallout Build");
+        var needsRiderSection = !content.Contains("# JetBrains Rider");
+        var needsDotNetSection = !content.Contains("# Rider DotSettings");
+
+        if (!needsFalloutSection && !needsRiderSection && !needsDotNetSection)
+        {
+            return string.Empty;
+        }
+
+        var additions = new System.Text.StringBuilder();
+
+        if (!content.EndsWith("\n") && content.Length > 0)
+        {
+            additions.AppendLine();
+        }
+
+        if (needsFalloutSection)
+        {
+            additions.AppendLine("# Fallout Build");
+            additions.AppendLine(".fallout/build.schema.json");
+            additions.AppendLine(".fallout/temp/");
+            additions.AppendLine(".tmp/");
+            additions.AppendLine("artifacts/");
+            additions.AppendLine();
+        }
+
+        if (needsRiderSection)
+        {
+            additions.AppendLine("# JetBrains Rider");
+            additions.AppendLine(".idea/");
+        }
+        if (needsDotNetSection)
+        {
+            additions.AppendLine();
+            additions.AppendLine("# Rider DotSettings");
+            additions.AppendLine("*.DotSettings");
+        }
+
+        return additions.ToString();
+    }
+
+    /// <summary>
+    /// Reads the root config files (nuget.config, GitVersion.yml, azure-pipelines.yml) that ship
+    /// embedded in this tool.
+    /// </summary>
+    public static IReadOnlyList<DefaultRootItem> GetDefaultRootItems()
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        var items = new List<DefaultRootItem>();
+
+        foreach (var resourceName in assembly.GetManifestResourceNames().Where(name => name.Contains("DefaultRootItems")))
+        {
+            // Format: Automation.Fallout.Builder.DefaultRootItems.filename.ext
+            var parts = resourceName.Split('.');
+            var fileNameParts = new List<string>();
+
+            // Start from "DefaultRootItems" onwards
+            bool foundDefaultRootItems = false;
+            foreach (var part in parts)
+            {
+                if (part == "DefaultRootItems")
+                {
+                    foundDefaultRootItems = true;
+                    continue;
+                }
+                if (foundDefaultRootItems)
+                {
+                    fileNameParts.Add(part);
+                }
+            }
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                AnsiConsole.MarkupLine($"[red]Could not load resource {resourceName.EscapeMarkup()}[/]");
+                continue;
+            }
+
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+
+            items.Add(new DefaultRootItem
+            {
+                FileName = string.Join(".", fileNameParts),
+                Content = buffer.ToArray()
+            });
+        }
+
+        return items;
+    }
+
     public static async Task<bool> CopyDefaultRootItemsAsync(string workingDirectory)
     {
         AnsiConsole.MarkupLine("[yellow]Copying default root items from embedded resources...[/]");
 
         try
         {
-            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-            var resourceNames = assembly.GetManifestResourceNames()
-                .Where(name => name.Contains("DefaultRootItems"))
-                .ToList();
+            var items = GetDefaultRootItems();
 
-            if (resourceNames.Count == 0)
+            if (items.Count == 0)
             {
                 AnsiConsole.MarkupLine("[red]No DefaultRootItems embedded resources found[/]");
                 return false;
             }
 
-            foreach (var resourceName in resourceNames)
+            foreach (var item in items)
             {
-                // Extract filename from resource name
-                // Format: Automation.Fallout.Builder.DefaultRootItems.filename.ext
-                var parts = resourceName.Split('.');
-                var fileNameParts = new List<string>();
+                var destFile = Path.Combine(workingDirectory, item.FileName);
+                await File.WriteAllBytesAsync(destFile, item.Content);
 
-                // Start from "DefaultRootItems" onwards
-                bool foundDefaultRootItems = false;
-                foreach (var part in parts)
-                {
-                    if (part == "DefaultRootItems")
-                    {
-                        foundDefaultRootItems = true;
-                        continue;
-                    }
-                    if (foundDefaultRootItems)
-                    {
-                        fileNameParts.Add(part);
-                    }
-                }
-
-                var fileName = string.Join(".", fileNameParts);
-                var destFile = Path.Combine(workingDirectory, fileName);
-
-                using (var stream = assembly.GetManifestResourceStream(resourceName))
-                {
-                    if (stream == null)
-                    {
-                        AnsiConsole.MarkupLine($"[red]Could not load resource {resourceName}[/]");
-                        continue;
-                    }
-
-                    using (var fileStream = File.Create(destFile))
-                    {
-                        await stream.CopyToAsync(fileStream);
-                    }
-                }
-
-                AnsiConsole.MarkupLine($"[green]Copied {fileName}[/]");
+                AnsiConsole.MarkupLine($"[green]Copied {item.FileName.EscapeMarkup()}[/]");
             }
 
             AnsiConsole.MarkupLine("[green]All default root items copied successfully[/]");

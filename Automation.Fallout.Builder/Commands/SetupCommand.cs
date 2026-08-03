@@ -6,36 +6,6 @@ namespace Automation.Fallout.Builder.Commands;
 
 public static class SetupCommand
 {
-    private static string? FindRepositoryRoot()
-    {
-        var currentDir = Directory.GetCurrentDirectory();
-
-        // Walk up the directory tree looking for .git or .sln
-        while (currentDir != null)
-        {
-            // Check for .git directory
-            if (Directory.Exists(Path.Combine(currentDir, ".git")))
-            {
-                return currentDir;
-            }
-
-            // Check for .sln file
-            if (Directory.GetFiles(currentDir, "*.sln").Length > 0)
-            {
-                return currentDir;
-            }
-
-            // Move up one directory
-            var parent = Directory.GetParent(currentDir);
-            if (parent == null)
-                break;
-
-            currentDir = parent.FullName;
-        }
-
-        return null;
-    }
-
     public static async Task<int> ExecuteAsync()
     {
         AnsiConsole.Write(
@@ -45,10 +15,10 @@ public static class SetupCommand
         AnsiConsole.MarkupLine("[bold]Welcome to Automation Fallout Builder Setup![/]");
         AnsiConsole.MarkupLine("This tool will help you configure your Fallout build pipeline.\n");
 
-        var workingDirectory = FindRepositoryRoot();
+        var workingDirectory = RepositoryLocator.FindRepositoryRoot();
         if (workingDirectory == null)
         {
-            AnsiConsole.MarkupLine("[red]Could not find repository root. Please run this command from within a git repository or directory containing a .sln file.[/]");
+            AnsiConsole.MarkupLine("[red]Could not find repository root. Please run this command from within a git repository or directory containing a .sln or .slnx file.[/]");
             return 1;
         }
 
@@ -91,8 +61,8 @@ public static class SetupCommand
         await NuGetPackageInstaller.UpgradeProjectTargetFrameworkAsync(buildCsproj);
 
         // Step 6: Add PackageDownloads
-        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "GitVersion.Tool", "6.5.1");
-        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "ReportGenerator", "5.5.1");
+        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "GitVersion.Tool", "6.8.2");
+        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "ReportGenerator", "5.5.11");
 
         // Step 7: Get user configuration
         var config = await PromptForConfigurationAsync(workingDirectory);
@@ -243,11 +213,11 @@ public static class SetupCommand
     {
         AnsiConsole.MarkupLine("\n[yellow bold]Installing local tools...[/]\n");
 
-        // Install GitVersion.Tool 6.5.1
+        // Install GitVersion.Tool 6.8.2
         await NuGetPackageInstaller.InstallToolLocallyAsync(
             workingDirectory,
             "GitVersion.Tool",
-            "6.5.1");
+            "6.8.2");
 
         // Install Gitleaks for secret scanning
         AnsiConsole.MarkupLine("[yellow]Note: Gitleaks should be installed separately from https://github.com/gitleaks/gitleaks[/]");
