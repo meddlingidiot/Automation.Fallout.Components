@@ -7,49 +7,127 @@ namespace Automation.Fallout.Builder.Services;
 
 public static class NuGetPackageInstaller
 {
-    public static async Task<bool> InstallFalloutGlobalToolAsync()
+    /// <summary>
+    /// Ensures the Fallout CLI is available as a global tool.
+    /// </summary>
+    /// <remarks>
+    /// Detection reads 'dotnet tool list -g' rather than running 'fallout --version'. Inside a
+    /// Fallout repository that probe restores and compiles the _build project before answering,
+    /// which takes minutes, so any timeout on it reports "not installed" and triggers a redundant
+    /// install that then collides on the 'fallout' shim.
+    /// </remarks>
+    public static async Task<bool> InstallFalloutGlobalToolAsync(string? version = null)
     {
-        AnsiConsole.MarkupLine("[yellow]Checking if Fallout global tool is installed...[/]");
+        version ??= MigrationDefaults.GlobalToolVersion;
 
-        var isInstalled = await IsFalloutInstalledAsync();
-        if (isInstalled)
+        AnsiConsole.MarkupLine("[yellow]Checking if the Fallout CLI is installed...[/]");
+
+        var installedTools = await ListGlobalToolsAsync();
+
+        if (installedTools.TryGetValue(MigrationDefaults.GlobalToolPackageId, out var installedVersion))
         {
-            AnsiConsole.MarkupLine("[green]Fallout is already installed[/]");
+            AnsiConsole.MarkupLine($"[green]Fallout CLI {installedVersion.EscapeMarkup()} is already installed[/]");
             return true;
         }
 
-        AnsiConsole.MarkupLine("[yellow]Installing Fallout global tool...[/]");
-        // Fallout.GlobalTool was renamed to Fallout.Cli and unlisted; the shim is still 'fallout'.
-        var success = await RunDotNetCommandAsync("tool install Fallout.Cli -g");
+        // Fallout.GlobalTool was renamed to Fallout.Cli and unlisted, but it still owns the
+        // 'fallout' shim, so installing the replacement fails until it is removed.
+        if (installedTools.ContainsKey(SupersededGlobalToolPackageId))
+        {
+            AnsiConsole.MarkupLine($"[yellow]{SupersededGlobalToolPackageId} owns the 'fallout' command and has been superseded by {MigrationDefaults.GlobalToolPackageId}. Removing it...[/]");
+
+            if (!await RunDotNetCommandAsync($"tool uninstall {SupersededGlobalToolPackageId} --global"))
+            {
+                AnsiConsole.MarkupLine($"[red]Could not uninstall {SupersededGlobalToolPackageId}. Remove it manually and try again.[/]");
+                return false;
+            }
+        }
+
+        AnsiConsole.MarkupLine($"[yellow]Installing Fallout CLI {version.EscapeMarkup()}...[/]");
+
+        // The 11.x releases are unlisted on nuget.org, so an unversioned install cannot resolve them.
+        var success = await RunDotNetCommandAsync($"tool install {MigrationDefaults.GlobalToolPackageId} -g --version {version}");
 
         if (success)
         {
-            AnsiConsole.MarkupLine("[green]Fallout global tool installed successfully[/]");
+            AnsiConsole.MarkupLine("[green]Fallout CLI installed successfully[/]");
         }
         else
         {
-            AnsiConsole.MarkupLine("[red]Failed to install Fallout global tool[/]");
+            AnsiConsole.MarkupLine("[red]Failed to install the Fallout CLI[/]");
         }
 
         return success;
     }
 
-    public static async Task<bool> UpdateFalloutGlobalToolAsync()
+    /// <summary>
+    /// Moves an already installed Fallout CLI onto the requested version.
+    /// </summary>
+    public static async Task<bool> UpdateFalloutGlobalToolAsync(string? version = null)
     {
-        AnsiConsole.MarkupLine("[yellow]Updating Fallout global tool...[/]");
+        version ??= MigrationDefaults.GlobalToolVersion;
 
-        var success = await RunDotNetCommandAsync("tool update Fallout.Cli --global");
+        var installedTools = await ListGlobalToolsAsync();
+        if (installedTools.TryGetValue(MigrationDefaults.GlobalToolPackageId, out var installedVersion)
+            && installedVersion == version)
+        {
+            return true;
+        }
+
+        AnsiConsole.MarkupLine($"[yellow]Updating the Fallout CLI to {version.EscapeMarkup()}...[/]");
+
+        var success = await RunDotNetCommandAsync(
+            $"tool update {MigrationDefaults.GlobalToolPackageId} --global --version {version}");
 
         if (success)
         {
-            AnsiConsole.MarkupLine("[green]Fallout global tool updated successfully[/]");
+            AnsiConsole.MarkupLine("[green]Fallout CLI updated successfully[/]");
         }
         else
         {
-            AnsiConsole.MarkupLine("[yellow]Fallout global tool update failed, but continuing...[/]");
+            AnsiConsole.MarkupLine("[yellow]Fallout CLI update failed, but continuing...[/]");
         }
 
         return success;
+    }
+
+    /// <summary>The package id that Fallout.Cli replaced. It still owns the 'fallout' shim.</summary>
+    private const string SupersededGlobalToolPackageId = "fallout.globaltool";
+
+    /// <summary>
+    /// Parses 'dotnet tool list -g' into a package id -> version map.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, string>> ListGlobalToolsAsync()
+    {
+        var (succeeded, output) = await RunDotNetCommandCaptureAsync("tool list -g");
+
+        return succeeded
+            ? ParseGlobalToolList(output)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Parses the table emitted by 'dotnet tool list' into a package id -> version map.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ParseGlobalToolList(string output)
+    {
+        var tools = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var columns = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            // Skip the header row and the ---- separator.
+            if (columns.Length < 2 || columns[0].StartsWith("---", StringComparison.Ordinal) ||
+                columns[0].Equals("Package", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            tools[columns[0]] = columns[1];
+        }
+
+        return tools;
     }
 
     public static async Task<bool> RunFalloutSetupAsync(string workingDirectory)
@@ -393,7 +471,15 @@ public static class NuGetPackageInstaller
         }
     }
 
-    private static async Task<bool> IsFalloutInstalledAsync()
+    private static async Task<bool> RunDotNetCommandAsync(string arguments, string? workingDirectory = null)
+    {
+        return await RunCommandAsync("dotnet", arguments, workingDirectory);
+    }
+
+    /// <summary>
+    /// Runs a dotnet command and returns its stdout instead of echoing it to the console.
+    /// </summary>
+    private static async Task<(bool Succeeded, string Output)> RunDotNetCommandCaptureAsync(string arguments)
     {
         try
         {
@@ -401,8 +487,8 @@ public static class NuGetPackageInstaller
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "fallout",
-                    Arguments = "--version",
+                    FileName = "dotnet",
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -410,36 +496,20 @@ public static class NuGetPackageInstaller
                 }
             };
 
-            // Use async event handlers to prevent buffer deadlock
-            process.OutputDataReceived += (sender, args) => { /* Consume output */ };
-            process.ErrorDataReceived += (sender, args) => { /* Consume error */ };
-
             process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
 
-            // Wait with a 10-second timeout
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
-            var exitTask = process.WaitForExitAsync();
-            var completedTask = await Task.WhenAny(exitTask, timeoutTask);
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
 
-            if (completedTask == timeoutTask)
-            {
-                process.Kill(true);
-                return false;
-            }
+            await Task.WhenAll(outputTask, errorTask, process.WaitForExitAsync());
 
-            return process.ExitCode == 0;
+            return (process.ExitCode == 0, await outputTask);
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            AnsiConsole.MarkupLine($"[red]Error running command: {ex.Message.EscapeMarkup()}[/]");
+            return (false, string.Empty);
         }
-    }
-
-    private static async Task<bool> RunDotNetCommandAsync(string arguments, string? workingDirectory = null)
-    {
-        return await RunCommandAsync("dotnet", arguments, workingDirectory);
     }
 
     private static async Task<bool> RunInteractiveCommandAsync(string command, string arguments, string? workingDirectory = null)
