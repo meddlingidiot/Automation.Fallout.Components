@@ -1,0 +1,225 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "definitions": {
+    "Host": {
+      "type": "string",
+      "enum": [
+        "AppVeyor",
+        "AzurePipelines",
+        "Bamboo",
+        "Bitbucket",
+        "Bitrise",
+        "GitHubActions",
+        "GitLab",
+        "Jenkins",
+        "Rider",
+        "SpaceAutomation",
+        "TeamCity",
+        "Terminal",
+        "TravisCI",
+        "VisualStudio",
+        "VSCode"
+      ]
+    },
+    "ExecutableTarget": {
+      "type": "string",
+      "enum": [
+        "Announce",
+        "BuildVelopack",
+        "Clean",
+        "Compile",
+        "CoverageReport",
+        "IntegrationTests",
+        "Package",
+        "PreVelopack",
+        "ReleasePackage",
+        "ReleaseVelopack",
+        "Restore",
+        "ScanForSecrets",
+        "ShowVersion",
+        "TagRelease",
+        "Test",
+        "UnitTests",
+        "UpdateChangelog"
+      ]
+    },
+    "Verbosity": {
+      "type": "string",
+      "description": "",
+      "enum": [
+        "Verbose",
+        "Normal",
+        "Minimal",
+        "Quiet"
+      ]
+    },
+    "FalloutBuild": {
+      "properties": {
+        "Continue": {
+          "type": "boolean",
+          "description": "Indicates to continue a previously failed build attempt"
+        },
+        "Help": {
+          "type": "boolean",
+          "description": "Shows the help text for this build assembly"
+        },
+        "Host": {
+          "description": "Host for execution. Default is 'automatic'",
+          "$ref": "#/definitions/Host"
+        },
+        "NoLogo": {
+          "type": "boolean",
+          "description": "Disables displaying the NUKE logo"
+        },
+        "Partition": {
+          "type": "string",
+          "description": "Partition to use on CI"
+        },
+        "Plan": {
+          "type": "boolean",
+          "description": "Shows the execution plan (HTML)"
+        },
+        "Profile": {
+          "type": "array",
+          "description": "Defines the profiles to load",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Root": {
+          "type": "string",
+          "description": "Root directory during build execution"
+        },
+        "Skip": {
+          "type": "array",
+          "description": "List of targets to be skipped. Empty list skips all dependencies",
+          "items": {
+            "$ref": "#/definitions/ExecutableTarget"
+          }
+        },
+        "Target": {
+          "type": "array",
+          "description": "List of targets to be invoked. Default is '{default_target}'",
+          "items": {
+            "$ref": "#/definitions/ExecutableTarget"
+          }
+        },
+        "Verbosity": {
+          "description": "Logging verbosity during build execution. Default is 'Normal'",
+          "$ref": "#/definitions/Verbosity"
+        },
+        "BuildProjectFile": {
+          "type": [
+            "null",
+            "string"
+          ],
+          "description": "Path to the build project (.csproj) relative to the repository root. Defaults to 'build/_build.csproj' when unset. Read by the Fallout global tool's in-tool runner."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "ArtifactsDirectoryParam": {
+          "type": "string"
+        },
+        "AzureBlobAccount": {
+          "type": "string"
+        },
+        "AzureBlobEndpoint": {
+          "type": "string"
+        },
+        "AzureBlobSasTokenLocal": {
+          "type": "string"
+        },
+        "AzureBlobTimeout": {
+          "type": "string"
+        },
+        "AzurePipelinesImage": {
+          "type": "string",
+          "description": "Azure Pipelines image - only used if not using self-hosted pool"
+        },
+        "AzurePipelinesPool": {
+          "type": "string",
+          "description": "Azure Pipelines pool name"
+        },
+        "BreakBuildOnSecretLeaks": {
+          "type": "boolean",
+          "description": "Break build on secret leaks - Default is 'true'"
+        },
+        "BreakBuildOnWarnings": {
+          "type": "boolean",
+          "description": "Break build on warnings - Default is 'true'"
+        },
+        "CodeSigningCertificateName": {
+          "type": "string"
+        },
+        "Configuration": {
+          "type": "string",
+          "enum": [
+            "Debug",
+            "Release"
+          ],
+          "description": "Configuration to build - Default is 'Debug' (local) or 'Release' (server)"
+        },
+        "DevOpsGitPatToken": {
+          "type": "string",
+          "description": "Azure DevOps Personal Access Token (optional, for future enhancements)"
+        },
+        "DotNetSdkVersion": {
+          "type": "string",
+          "description": ".NET SDK version to install"
+        },
+        "ForceTagRelease": {
+          "type": "boolean",
+          "description": "Force tag for local builds - Default is 'false'"
+        },
+        "GitleaksVersion": {
+          "type": "string",
+          "description": "Version of Gitleaks to use"
+        },
+        "KeepMaxReleases": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PrereleaseFeedId": {
+          "type": "string",
+          "description": "Azure DevOps feed ID for prerelease packages"
+        },
+        "ProductionFeedId": {
+          "type": "string",
+          "description": "Azure DevOps feed ID for production packages"
+        },
+        "Solution": {
+          "type": "string",
+          "description": "Path to a solution file that is automatically loaded"
+        },
+        "SslComCredentialId": {
+          "type": "string"
+        },
+        "SslComPassword": {
+          "type": "string"
+        },
+        "SslComUsername": {
+          "type": "string"
+        },
+        "VelopackBlobContainer": {
+          "type": "string"
+        },
+        "VelopackChannel": {
+          "type": "string"
+        },
+        "VelopackIconPath": {
+          "type": "string"
+        },
+        "VelopackProjectName": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "$ref": "#/definitions/FalloutBuild"
+    }
+  ]
+}

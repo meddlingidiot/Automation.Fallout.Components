@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Global Tool Configuration -->
+    <PackAsTool>true</PackAsTool>
+    <IsPackable>true</IsPackable>
+    <ToolCommandName>aftrnuke</ToolCommandName>
+    <PackageId>Automation.Fallout.Builder</PackageId>
+    <Authors>Luke Lanphear   </Authors>
+    <Description>A global tool to simplify Nuke build setup across projects</Description>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <RepositoryUrl>https://dev.azure.com/AFTR/Automation/_git/Automation.Nuke.Builder</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
+    <PackageReference Include="System.CommandLine" Version="2.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclude DefaultRootItems from default Content inclusion to avoid duplicates -->
+    <Content Remove="DefaultRootItems\**\*" />
+
+    <!-- Embed DefaultRootItems files as embedded resources -->
+    <EmbeddedResource Include="DefaultRootItems\**\*" />
+  </ItemGroup>
+
+</Project>

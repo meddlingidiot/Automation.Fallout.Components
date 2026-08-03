@@ -1,0 +1,45 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{D213801A-7E0F-4197-9F41-E2EBF6374D43}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+		azure-pipelines.yml = azure-pipelines.yml
+		GitVersion.yml = GitVersion.yml
+		README.md = README.md
+		.gitleaks.toml = .gitleaks.toml
+		dotnet-tools.json = dotnet-tools.json
+		CHANGELOG.md = CHANGELOG.md
+		Directory.Build.props = Directory.Build.props
+		nuget.config = nuget.config
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "_build", "build\_build.csproj", "{4DA9237F-7A3C-4333-85CC-0CEF107A1D3A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Automation.Fallout.Builder", "Automation.Fallout.Builder\Automation.Fallout.Builder.csproj", "{32E08667-1555-4D24-8772-3B0BFE4ACFF6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Automation.Fallout.Builder.UnitTests", "Automation.Fallout.Builder.UnitTests\Automation.Fallout.Builder.UnitTests.csproj", "{396F9375-251B-49AF-B4F9-E28D48C21604}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Automation.Fallout.Components", "Automation.Fallout.Components\Automation.Fallout.Components.csproj", "{14067CCD-CBCE-4DAF-88E1-B3DEA49194EE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4DA9237F-7A3C-4333-85CC-0CEF107A1D3A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4DA9237F-7A3C-4333-85CC-0CEF107A1D3A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{32E08667-1555-4D24-8772-3B0BFE4ACFF6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{32E08667-1555-4D24-8772-3B0BFE4ACFF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{32E08667-1555-4D24-8772-3B0BFE4ACFF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{32E08667-1555-4D24-8772-3B0BFE4ACFF6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{396F9375-251B-49AF-B4F9-E28D48C21604}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{396F9375-251B-49AF-B4F9-E28D48C21604}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{396F9375-251B-49AF-B4F9-E28D48C21604}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{396F9375-251B-49AF-B4F9-E28D48C21604}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14067CCD-CBCE-4DAF-88E1-B3DEA49194EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14067CCD-CBCE-4DAF-88E1-B3DEA49194EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14067CCD-CBCE-4DAF-88E1-B3DEA49194EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14067CCD-CBCE-4DAF-88E1-B3DEA49194EE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

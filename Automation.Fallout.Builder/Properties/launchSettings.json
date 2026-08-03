@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Automation.Fallout.Builder": {
+      "commandName": "Project",
+      "commandLineArgs": "setup"
+    }
+  }
+}
