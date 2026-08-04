@@ -101,7 +101,7 @@ The tool will guide you through:
 - Installs/updates the Fallout CLI (`Fallout.Cli`, exposing the `fallout` command)
 - Runs `fallout :setup` to scaffold the `build/` directory
 - Creates `build/` directory structure with `_build.csproj` targeting .NET 10.0
-- Adds required NuGet packages (`Automation.Fallout.Components`, `Fallout.Common`)
+- Adds required NuGet packages (`Automation.Fallout.Components` at the newest released version, `Fallout.Common` pinned to the CLI version), writing the versions into `Directory.Packages.props` when the repository manages package versions centrally
 - Adds `PackageDownload` entries for GitVersion.Tool (6.8.2) and ReportGenerator (5.5.11)
 - Installs local tools via dotnet-tools.json
 - Copies default files: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `azure-pipelines.yml`

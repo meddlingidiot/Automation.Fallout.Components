@@ -148,31 +148,111 @@ public static class NuGetPackageInstaller
         return success;
     }
 
-    public static async Task<bool> AddPackageToProjectAsync(string projectPath, string packageName, string? version = null)
+    /// <summary>
+    /// References a package from a project, putting the version wherever the repository keeps it.
+    /// </summary>
+    /// <remarks>
+    /// This edits the project XML rather than shelling out to 'dotnet add package' because the
+    /// version has to land in Directory.Packages.props when the repository manages versions
+    /// centrally, and because a repository being set up for the first time may not have restored
+    /// anything yet.
+    /// </remarks>
+    /// <param name="version">Pins an exact version. When null, the newest released version on the feeds is used.</param>
+    /// <param name="repositoryRoot">Where the feed lookup runs and where the search for Directory.Packages.props stops. Defaults to the project directory.</param>
+    /// <param name="fallbackVersion">Used when the feeds cannot be reached, so setup still leaves a buildable project.</param>
+    public static async Task<bool> AddPackageToProjectAsync(
+        string projectPath,
+        string packageName,
+        string? version = null,
+        string? repositoryRoot = null,
+        string? fallbackVersion = null)
     {
-        // Remove the package first if it exists
-        AnsiConsole.MarkupLine($"[yellow]Removing existing {packageName} package if present...[/]");
-        var removeCommand = $"remove \"{projectPath}\" package {packageName}";
-        await RunDotNetCommandAsync(removeCommand);
-
-        // Add the package (always use newest version unless specified)
-        var versionArg = version != null ? $" --version {version}" : "";
-        var command = $"add \"{projectPath}\" package {packageName}{versionArg}";
-
         AnsiConsole.MarkupLine($"[yellow]Adding package {packageName} to project...[/]");
 
-        var success = await RunDotNetCommandAsync(command);
-
-        if (success)
+        try
         {
+            var projectDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))!;
+            repositoryRoot ??= projectDirectory;
+
+            var projectXml = await File.ReadAllTextAsync(projectPath);
+
+            var resolvedVersion = await ResolvePackageVersionAsync(
+                packageName, version, repositoryRoot, projectXml, fallbackVersion);
+
+            if (resolvedVersion == null)
+            {
+                AnsiConsole.MarkupLine(
+                    $"[red]Could not determine a version for {packageName}. Add it to the project manually.[/]");
+                return false;
+            }
+
+            var propsFile = CentralPackageManagement.FindPropsFile(projectDirectory, repositoryRoot);
+            var centrallyManaged = propsFile != null &&
+                                   CentralPackageManagement.IsEnabled(await File.ReadAllTextAsync(propsFile));
+
+            if (centrallyManaged)
+            {
+                var props = CentralPackageManagement.UpsertPackageVersion(
+                    await File.ReadAllTextAsync(propsFile!), packageName, resolvedVersion);
+
+                if (props.Changed)
+                {
+                    await File.WriteAllTextAsync(propsFile!, props.Xml);
+                }
+
+                AnsiConsole.MarkupLine(
+                    $"[green]Pinned {packageName} {resolvedVersion} in {Path.GetFileName(propsFile)}[/]");
+            }
+
+            var project = CentralPackageManagement.UpsertPackageReference(
+                projectXml, packageName, centrallyManaged ? null : resolvedVersion);
+
+            if (project.Changed)
+            {
+                await File.WriteAllTextAsync(projectPath, project.Xml);
+            }
+
             AnsiConsole.MarkupLine($"[green]Package {packageName} added successfully[/]");
+            return true;
         }
-        else
+        catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]Failed to add package {packageName}[/]");
+            AnsiConsole.MarkupLine($"[red]Failed to add package {packageName}: {ex.Message.EscapeMarkup()}[/]");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// An explicit pin wins, then the newest released version on the feeds, then whatever the project
+    /// already pins, then the version this tool shipped with.
+    /// </summary>
+    private static async Task<string?> ResolvePackageVersionAsync(
+        string packageName,
+        string? requestedVersion,
+        string repositoryRoot,
+        string projectXml,
+        string? fallbackVersion)
+    {
+        if (requestedVersion != null)
+            return requestedVersion;
+
+        var latest = await NuGetVersionResolver.GetLatestStableVersionAsync(packageName, repositoryRoot);
+        if (latest != null)
+            return latest;
+
+        var existing = CentralPackageManagement.ReadPackageReferenceVersion(projectXml, packageName);
+        if (existing != null)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Keeping the version {packageName} is already pinned to ({existing.EscapeMarkup()})[/]");
+            return existing;
         }
 
-        return success;
+        if (fallbackVersion != null)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Falling back to {packageName} {fallbackVersion.EscapeMarkup()}[/]");
+        }
+
+        return fallbackVersion;
     }
 
     public static async Task<bool> InstallToolLocallyAsync(string workingDirectory, string toolName, string? version = null)
@@ -479,7 +559,8 @@ public static class NuGetPackageInstaller
     /// <summary>
     /// Runs a dotnet command and returns its stdout instead of echoing it to the console.
     /// </summary>
-    private static async Task<(bool Succeeded, string Output)> RunDotNetCommandCaptureAsync(string arguments)
+    internal static async Task<(bool Succeeded, string Output)> RunDotNetCommandCaptureAsync(
+        string arguments, string? workingDirectory = null)
     {
         try
         {
@@ -492,7 +573,8 @@ public static class NuGetPackageInstaller
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory()
                 }
             };
 

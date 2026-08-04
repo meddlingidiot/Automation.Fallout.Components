@@ -24,17 +24,17 @@ public static class SetupCommand
 
         AnsiConsole.MarkupLine($"[grey]Repository Root: {workingDirectory.EscapeMarkup()}[/]\n");
 
-        // Step 1: Ensure Nuke is installed
+        // Step 1: Ensure Fallout is installed
         if (!await NuGetPackageInstaller.InstallFalloutGlobalToolAsync())
         {
             AnsiConsole.MarkupLine("[red]Failed to install Fallout. Please install it manually and try again.[/]");
             return 1;
         }
 
-        // Step 2: Update Nuke global tool
+        // Step 2: Update Fallout global tool
         await NuGetPackageInstaller.UpdateFalloutGlobalToolAsync();
 
-        // Step 3: Run Nuke setup if not already done
+        // Step 3: Run Fallout setup if not already done
         var buildDir = Path.Combine(workingDirectory, "build");
         if (!Directory.Exists(buildDir))
         {
@@ -67,18 +67,19 @@ public static class SetupCommand
         // Step 7: Get user configuration
         var config = await PromptForConfigurationAsync(workingDirectory);
 
-        // Step 8: Install required packages
-        await InstallRequiredPackagesAsync(buildCsproj, config);
+        // Step 8: Copy default root items. The nuget.config among them carries the AFTR feeds, so it
+        // has to be in place before any package version is looked up.
+        await NuGetPackageInstaller.CopyDefaultRootItemsAsync(workingDirectory);
 
-        // Step 9: Install local tools
+        // Step 9: Install required packages
+        var packagesInstalled = await InstallRequiredPackagesAsync(buildCsproj, workingDirectory);
+
+        // Step 10: Install local tools
         await InstallLocalToolsAsync(workingDirectory);
 
-        // Step 10: Delete Configuration.cs if it exists
+        // Step 11: Delete Configuration.cs if it exists
         var configurationCs = Path.Combine(buildDir, "Configuration.cs");
         await NuGetPackageInstaller.DeleteFileIfExistsAsync(configurationCs);
-
-        // Step 11: Copy default root items
-        await NuGetPackageInstaller.CopyDefaultRootItemsAsync(workingDirectory);
 
         // Step 12: Update .gitignore
         await NuGetPackageInstaller.UpdateGitIgnoreAsync(workingDirectory);
@@ -87,6 +88,14 @@ public static class SetupCommand
         await GenerateBuildFileAsync(buildDir, config);
 
         AnsiConsole.MarkupLine("\n[green bold]Setup completed successfully![/]");
+
+        if (!packagesInstalled)
+        {
+            AnsiConsole.MarkupLine(
+                "\n[yellow]Not every package could be added to build/_build.csproj - see the errors above. " +
+                "The build will not compile until they are referenced.[/]");
+        }
+
         AnsiConsole.MarkupLine("\n[yellow]Next steps:[/]");
         AnsiConsole.MarkupLine("  1. Review the generated build/Build.cs file");
         AnsiConsole.MarkupLine("  2. Run [cyan]nuke --help[/] to see available targets");
@@ -194,19 +203,29 @@ public static class SetupCommand
         return config;
     }
 
-    private static async Task InstallRequiredPackagesAsync(string buildCsproj, BuildConfiguration config)
+    /// <summary>
+    /// References the two packages a Fallout build needs. Returns false when either could not be
+    /// added, so the caller can say so rather than leave a project that will not compile.
+    /// </summary>
+    private static async Task<bool> InstallRequiredPackagesAsync(string buildCsproj, string workingDirectory)
     {
         AnsiConsole.MarkupLine("\n[yellow bold]Installing required NuGet packages...[/]\n");
 
-        // Core package (your components package)
-        await NuGetPackageInstaller.AddPackageToProjectAsync(
+        // The components package moves independently of the CLI, so setup takes its newest release.
+        var componentsAdded = await NuGetPackageInstaller.AddPackageToProjectAsync(
             buildCsproj,
-            "Automation.Fallout.Components");
+            "Automation.Fallout.Components",
+            repositoryRoot: workingDirectory,
+            fallbackVersion: MigrationDefaults.ComponentsVersion);
 
-        // GitVersion
-        await NuGetPackageInstaller.AddPackageToProjectAsync(
+        // Fallout.Common is pinned instead: it has to match the Fallout CLI this tool installs.
+        var falloutCommonAdded = await NuGetPackageInstaller.AddPackageToProjectAsync(
             buildCsproj,
-            "Fallout.Common");
+            "Fallout.Common",
+            MigrationDefaults.FalloutCommonVersion,
+            workingDirectory);
+
+        return componentsAdded && falloutCommonAdded;
     }
 
     private static async Task InstallLocalToolsAsync(string workingDirectory)
