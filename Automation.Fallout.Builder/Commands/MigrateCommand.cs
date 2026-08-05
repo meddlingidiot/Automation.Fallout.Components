@@ -26,7 +26,7 @@ public static class MigrateCommand
         if (!File.Exists(buildProject))
         {
             AnsiConsole.MarkupLine($"[red]No build project found at {buildProject.EscapeMarkup()}.[/]");
-            AnsiConsole.MarkupLine("[yellow]This repository has not been set up yet - run [cyan]aftrfallout setup[/] instead.[/]");
+            AnsiConsole.MarkupLine("[yellow]This repository has not been set up yet - run [cyan]autofallout setup[/] instead.[/]");
             return 1;
         }
 

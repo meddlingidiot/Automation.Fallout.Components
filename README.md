@@ -76,9 +76,9 @@ A NuGet package providing modular, composable build components for Fallout build
 
 ### Automation.Fallout.Builder
 
-A global .NET tool (`aftrfallout`) that automates the setup of Fallout build infrastructure with intelligent prompts and configuration.
+A global .NET tool (`autofallout`) that automates the setup of Fallout build infrastructure with intelligent prompts and configuration.
 
-> **Note:** The tool command was renamed from `aftrnuke` to `aftrfallout`. Update any scripts or pipelines that still invoke `aftrnuke`.
+> **Note:** The tool command has been renamed twice: `aftrnuke` -> `aftrfallout` -> `autofallout`. Update any scripts or pipelines that still invoke either of the older names.
 
 **Key Features:**
 - Interactive setup with Spectre.Console
@@ -87,7 +87,7 @@ A global .NET tool (`aftrfallout`) that automates the setup of Fallout build inf
 - Installs and configures required tools (GitVersion, Gitleaks)
 - Copies default configuration files
 - Upgrades build projects to .NET 10.0
-- Migrates existing Nuke repositories with `aftrfallout migrate`
+- Migrates existing Nuke repositories with `autofallout migrate`
 
 **Installation/Updates:**
 
@@ -99,7 +99,7 @@ dotnet tool install --global Automation.Fallout.Builder
 
 ```bash
 cd YourProject
-aftrfallout setup
+autofallout setup
 ```
 
 The tool will guide you through:
@@ -140,7 +140,7 @@ The tool will guide you through:
 
 3. Run setup:
    ```bash
-   aftrfallout setup
+   autofallout setup
    ```
 
 4. Follow the interactive prompts to configure your build. The first question is which
@@ -345,7 +345,7 @@ See `nuget.config` for details.
 
 ## 📁 Generated Project Structure
 
-After running `aftrfallout setup`, your project will have:
+After running `autofallout setup`, your project will have:
 
 ```
 YourProject/
@@ -511,7 +511,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ## 📖 Additional Documentation
 
-- [Builder Tool README](Automation.Fallout.Builder/README.md) - Detailed `aftrfallout` documentation
+- [Builder Tool README](Automation.Fallout.Builder/README.md) - Detailed `autofallout` documentation
 - [Fallout Documentation](https://github.com/ChrisonSimtian/Fallout) - Official Fallout build system docs
 - [GitVersion Docs](https://gitversion.net/) - Semantic versioning configuration
 

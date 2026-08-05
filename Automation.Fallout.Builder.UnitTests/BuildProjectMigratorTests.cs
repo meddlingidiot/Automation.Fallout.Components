@@ -144,7 +144,7 @@ public class BuildProjectMigratorTests
     }
 
     /// <summary>
-    /// The exact shape aftrfallout migrate was handed by MeddlingIdiot.AppManager: already correctly
+    /// The exact shape autofallout migrate was handed by MeddlingIdiot.AppManager: already correctly
     /// versionless, and the migration used to stamp inline versions back onto it.
     /// </summary>
     [Test]

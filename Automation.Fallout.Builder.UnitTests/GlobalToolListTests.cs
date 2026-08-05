@@ -7,7 +7,7 @@ public class GlobalToolListTests
     private const string ToolListOutput = """
                                           Package Id                      Version          Commands
                                           ------------------------------------------------------------------
-                                          automation.fallout.builder      1.0.0            aftrfallout
+                                          automation.fallout.builder      1.0.0            autofallout
                                           fallout.cli                     11.0.18          fallout
                                           fallout.migrate                 10.3.49          fallout-migrate
                                           gitversion.tool                 6.5.1            dotnet-gitversion

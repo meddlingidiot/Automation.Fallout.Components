@@ -3,7 +3,7 @@ using Spectre.Console;
 namespace Automation.Fallout.Builder.Ui;
 
 /// <summary>
-/// The banner every aftrfallout command opens with: Vault Boy over a Figlet title.
+/// The banner every autofallout command opens with: Vault Boy over a Figlet title.
 /// </summary>
 public static class FalloutBanner
 {

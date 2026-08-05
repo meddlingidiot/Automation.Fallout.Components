@@ -1,7 +1,7 @@
 namespace Automation.Fallout.Builder.Models;
 
 /// <summary>
-/// Options for the 'aftrfallout migrate' command.
+/// Options for the 'autofallout migrate' command.
 /// </summary>
 public class MigrationOptions
 {

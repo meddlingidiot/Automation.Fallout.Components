@@ -1,4 +1,4 @@
-﻿# Automation.Fallout.Builder
+# Automation.Fallout.Builder
 
 A global .NET tool that simplifies the setup, configuration and migration of Fallout build pipelines across multiple projects.
 
@@ -44,15 +44,15 @@ dotnet tool install --global --add-source "./Automation.Fallout.Builder/nupkg" A
 
 | Command | Purpose |
 | --- | --- |
-| `aftrfallout setup` | Scaffold a Fallout build in a repository that does not have one |
-| `aftrfallout migrate` | Repair a repository that was renamed from Nuke to Fallout but no longer compiles |
+| `autofallout setup` | Scaffold a Fallout build in a repository that does not have one |
+| `autofallout migrate` | Repair a repository that was renamed from Nuke to Fallout but no longer compiles |
 
 ## Usage
 
 Navigate to your project root directory and run:
 
 ```bash
-aftrfallout setup
+autofallout setup
 ```
 
 The tool will guide you through:
@@ -79,7 +79,7 @@ The tool will:
 A straight `Nuke` → `Fallout` find/replace leaves a repository that does not compile. Run:
 
 ```bash
-aftrfallout migrate
+autofallout migrate
 ```
 
 from anywhere inside the repository (or pass `--path`). It repairs, in order:
@@ -121,8 +121,8 @@ Originals are copied to `.fallout/Backup/migrate-<timestamp>/` before anything i
 ### Recommended flow
 
 ```bash
-aftrfallout migrate --dry-run
-aftrfallout migrate
+autofallout migrate --dry-run
+autofallout migrate
 dotnet build build/_build.csproj
 ```
 
@@ -130,9 +130,9 @@ Build the `_build` project on its own first — every migration error lands ther
 
 ### Non-interactive (CI) usage
 
-You can re-run setup in CI or scripts to enforce conventions without prompts by answering with defaults when asked. For fully non-interactive flows, pre-create a `_build.csproj` that already references `Automation.Fallout.Components` and commit your chosen `Build.cs` so `aftrfallout setup` becomes a no-op.
+You can re-run setup in CI or scripts to enforce conventions without prompts by answering with defaults when asked. For fully non-interactive flows, pre-create a `_build.csproj` that already references `Automation.Fallout.Components` and commit your chosen `Build.cs` so `autofallout setup` becomes a no-op.
 
-`aftrfallout migrate` is fully non-interactive already and is safe to run in a pipeline.
+`autofallout migrate` is fully non-interactive already and is safe to run in a pipeline.
 
 ## Build Types
 
@@ -182,7 +182,7 @@ Complete pipeline with:
 
 ```bash
 cd MyProject
-aftrfallout setup
+autofallout setup
 
 # Follow the prompts:
 # - Select build type: TestBuild
