@@ -1,5 +1,6 @@
 using Automation.Fallout.Builder.Models;
 using Automation.Fallout.Builder.Services;
+using Automation.Fallout.Builder.Ui;
 using Spectre.Console;
 
 namespace Automation.Fallout.Builder.Commands;
@@ -11,9 +12,7 @@ public static class MigrateCommand
 {
     public static async Task<int> ExecuteAsync(MigrationOptions options)
     {
-        AnsiConsole.Write(
-            new FigletText("AFTR Fallout Migrate")
-                .Color(Color.Orange1));
+        FalloutBanner.Render("AFTR Fallout Migrate", Color.Orange1);
 
         var workingDirectory = options.Path ?? RepositoryLocator.FindRepositoryRoot();
         if (workingDirectory == null || !Directory.Exists(workingDirectory))

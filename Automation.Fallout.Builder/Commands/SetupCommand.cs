@@ -1,5 +1,6 @@
 using Automation.Fallout.Builder.Models;
 using Automation.Fallout.Builder.Services;
+using Automation.Fallout.Builder.Ui;
 using Spectre.Console;
 
 namespace Automation.Fallout.Builder.Commands;
@@ -8,9 +9,7 @@ public static class SetupCommand
 {
     public static async Task<int> ExecuteAsync()
     {
-        AnsiConsole.Write(
-            new FigletText("Fallout Setup")
-                .Color(Color.Blue));
+        FalloutBanner.Render("Fallout Setup", Color.Blue);
 
         AnsiConsole.MarkupLine("[bold]Welcome to Automation Fallout Builder Setup![/]");
         AnsiConsole.MarkupLine("This tool will help you configure your Fallout build pipeline.\n");

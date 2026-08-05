@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text;
 using Automation.Fallout.Builder.Commands;
 using Automation.Fallout.Builder.Models;
 
@@ -8,6 +9,9 @@ class Program
 {
     static int Main(string[] args)
     {
+        // The Vault Boy banner is braille - a non-UTF-8 code page renders it as question marks.
+        TrySetUtf8Output();
+
         var rootCommand = new RootCommand("Automation Fallout Builder - Simplify Fallout build setup");
 
         var setupCommand = new Command("setup", "Setup Fallout build for the current project");
@@ -20,6 +24,18 @@ class Program
         rootCommand.Subcommands.Add(BuildMigrateCommand());
 
         return rootCommand.Parse(args).Invoke();
+    }
+
+    private static void TrySetUtf8Output()
+    {
+        try
+        {
+            Console.OutputEncoding = Encoding.UTF8;
+        }
+        catch (IOException)
+        {
+            // No console attached (output redirected to a pipe on some hosts) - the art degrades, nothing else does.
+        }
     }
 
     private static Command BuildMigrateCommand()
