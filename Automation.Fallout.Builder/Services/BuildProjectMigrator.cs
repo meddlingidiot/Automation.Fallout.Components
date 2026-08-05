@@ -20,7 +20,14 @@ public static class BuildProjectMigrator
     public static BuildProjectMigrationResult Migrate(string projectXml, MigrationOptions options) =>
         Migrate(projectXml, MigrationPackageVersions.FromOptions(options));
 
-    public static BuildProjectMigrationResult Migrate(string projectXml, MigrationPackageVersions versions)
+    /// <param name="centrallyManaged">
+    /// Whether a Directory.Packages.props governs this project. When it does the versions belong in
+    /// that file and a Version on the PackageReference fails restore with NU1008, so the references
+    /// are written bare and any version already on them is stripped. PackageDownload is untouched
+    /// either way - central package management does not cover it.
+    /// </param>
+    public static BuildProjectMigrationResult Migrate(string projectXml, MigrationPackageVersions versions,
+        bool centrallyManaged = false)
     {
         var doc = XDocument.Parse(projectXml);
         var root = doc.Root ?? throw new InvalidOperationException("The build project file has no root element.");
@@ -28,7 +35,7 @@ public static class BuildProjectMigrator
 
         RenameNukeProperties(root, notes);
         UpgradeTargetFramework(root, notes);
-        MigratePackageReferences(root, versions, notes);
+        MigratePackageReferences(root, versions, centrallyManaged, notes);
         UpsertPackageDownload(root, "GitVersion.Tool", MigrationDefaults.GitVersionToolVersion, notes);
         UpsertPackageDownload(root, "ReportGenerator", MigrationDefaults.ReportGeneratorVersion, notes);
 
@@ -62,7 +69,8 @@ public static class BuildProjectMigrator
         targetFramework.Value = MigrationDefaults.TargetFramework;
     }
 
-    private static void MigratePackageReferences(XElement root, MigrationPackageVersions versions, List<string> notes)
+    private static void MigratePackageReferences(XElement root, MigrationPackageVersions versions,
+        bool centrallyManaged, List<string> notes)
     {
         var references = ByLocalName(root, "PackageReference").ToList();
 
@@ -81,11 +89,12 @@ public static class BuildProjectMigrator
             reference.Remove();
         }
 
-        UpsertPackageReference(root, "Fallout.Common", versions.FalloutCommon, notes);
-        UpsertPackageReference(root, "Automation.Fallout.Components", versions.Components, notes);
+        UpsertPackageReference(root, "Fallout.Common", versions.FalloutCommon, centrallyManaged, notes);
+        UpsertPackageReference(root, "Automation.Fallout.Components", versions.Components, centrallyManaged, notes);
     }
 
-    private static void UpsertPackageReference(XElement root, string packageId, string version, List<string> notes)
+    private static void UpsertPackageReference(XElement root, string packageId, string version, bool centrallyManaged,
+        List<string> notes)
     {
         var existing = ByLocalName(root, "PackageReference")
             .FirstOrDefault(r => string.Equals(Include(r), packageId, StringComparison.OrdinalIgnoreCase));
@@ -99,22 +108,44 @@ public static class BuildProjectMigrator
                 root.Add(group);
             }
 
-            group.Add(new XElement(root.Name.Namespace.GetName("PackageReference"),
-                new XAttribute("Include", packageId),
-                new XAttribute("Version", version)));
+            var reference = new XElement(root.Name.Namespace.GetName("PackageReference"),
+                new XAttribute("Include", packageId));
 
-            notes.Add($"Added package {packageId} {version}");
+            if (!centrallyManaged)
+            {
+                reference.SetAttributeValue("Version", version);
+            }
+
+            group.Add(reference);
+
+            notes.Add(centrallyManaged
+                ? $"Added package {packageId} (version pinned in {CentralPackageManagement.PropsFileName})"
+                : $"Added package {packageId} {version}");
             return;
         }
 
-        var currentVersion = existing.Attribute("Version")?.Value;
-        if (currentVersion == version)
+        var currentVersion = existing.Attribute("Version");
+
+        if (centrallyManaged)
+        {
+            if (currentVersion == null)
+                return;
+
+            currentVersion.Remove();
+            notes.Add($"Moved the {packageId} version to {CentralPackageManagement.PropsFileName}");
+            return;
+        }
+
+        // Snapshotted before the write: SetAttributeValue mutates this same attribute, so reading it
+        // afterwards would report the new version as the old one.
+        var previousVersion = currentVersion?.Value;
+        if (previousVersion == version)
             return;
 
         existing.SetAttributeValue("Version", version);
-        notes.Add(currentVersion == null
+        notes.Add(previousVersion == null
             ? $"Pinned {packageId} to {version}"
-            : $"Corrected {packageId} from {currentVersion} to {version}");
+            : $"Corrected {packageId} from {previousVersion} to {version}");
     }
 
     private static void UpsertPackageDownload(XElement root, string packageId, string version, List<string> notes)

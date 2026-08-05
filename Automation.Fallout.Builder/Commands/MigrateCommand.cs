@@ -119,7 +119,20 @@ public static class MigrateCommand
 
         try
         {
-            var result = BuildProjectMigrator.Migrate(original, versions);
+            // A repository that manages versions centrally keeps every version in
+            // Directory.Packages.props, so the pins go there and the build project only gets the bare
+            // Include - a Version on the PackageReference fails restore with NU1008.
+            var buildDirectory = Path.GetDirectoryName(Path.GetFullPath(buildProject))!;
+            var propsFile = CentralPackageManagement.FindPropsFile(buildDirectory, workspace.Root);
+            var propsXml = propsFile == null ? null : workspace.ReadText(propsFile);
+            var centrallyManaged = propsXml != null && CentralPackageManagement.IsEnabled(propsXml);
+
+            if (centrallyManaged)
+            {
+                MigratePackageVersions(propsFile!, propsXml!, versions, workspace);
+            }
+
+            var result = BuildProjectMigrator.Migrate(original, versions, centrallyManaged);
 
             if (result.Notes.Count == 0)
             {
@@ -133,6 +146,38 @@ public static class MigrateCommand
         {
             report.Warn(workspace.Relative(buildProject), $"Could not be migrated: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Writes the resolved versions into Directory.Packages.props as PackageVersion items. The build
+    /// project's references are left bare by <see cref="BuildProjectMigrator"/>.
+    /// </summary>
+    private static void MigratePackageVersions(string propsFile, string propsXml, MigrationPackageVersions versions,
+        MigrationWorkspace workspace)
+    {
+        var pins = new[]
+        {
+            (PackageId: MigrationPackageVersionResolver.FalloutCommonPackageId, Version: versions.FalloutCommon),
+            (PackageId: MigrationPackageVersionResolver.ComponentsPackageId, Version: versions.Components)
+        };
+
+        var xml = propsXml;
+        var notes = new List<string>();
+
+        foreach (var pin in pins)
+        {
+            var edit = CentralPackageManagement.UpsertPackageVersion(xml, pin.PackageId, pin.Version);
+            if (!edit.Changed)
+                continue;
+
+            xml = edit.Xml;
+            notes.Add($"Pinned {pin.PackageId} to {pin.Version}");
+        }
+
+        if (notes.Count == 0)
+            return;
+
+        workspace.WriteText(propsFile, xml, string.Join("; ", notes));
     }
 
     private static void MigrateBuildSources(string buildDirectory, BuildPlatform platform, MigrationWorkspace workspace,

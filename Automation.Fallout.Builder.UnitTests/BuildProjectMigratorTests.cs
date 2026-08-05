@@ -124,4 +124,82 @@ public class BuildProjectMigratorTests
             await Assert.That(second.Xml).IsEqualTo(first.Xml);
         }
     }
+
+    /// <summary>
+    /// A repository on central package management keeps its versions in Directory.Packages.props. A
+    /// Version left on the PackageReference is not a style problem - restore fails with NU1008.
+    /// </summary>
+    [Test]
+    public async Task Migrate_LeavesVersionsOffThePackageReferencesWhenVersionsAreManagedCentrally()
+    {
+        var result = BuildProjectMigrator.Migrate(BlindlyRenamedProject, new MigrationPackageVersions("1.0.2", "11.0.18"),
+            centrallyManaged: true);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(result.Xml).Contains("""<PackageReference Include="Fallout.Common" />""");
+            await Assert.That(result.Xml).Contains("""<PackageReference Include="Automation.Fallout.Components" />""");
+            await Assert.That(result.Notes).Contains(n => n.Contains("Moved the Fallout.Common version"));
+        }
+    }
+
+    /// <summary>
+    /// The exact shape aftrfallout migrate was handed by MeddlingIdiot.AppManager: already correctly
+    /// versionless, and the migration used to stamp inline versions back onto it.
+    /// </summary>
+    [Test]
+    public async Task Migrate_LeavesAnAlreadyCentrallyManagedProjectAlone()
+    {
+        const string centrallyManagedProject = """
+                                               <Project Sdk="Microsoft.NET.Sdk">
+                                                 <PropertyGroup>
+                                                   <TargetFramework>net10.0</TargetFramework>
+                                                 </PropertyGroup>
+                                                 <ItemGroup>
+                                                   <PackageReference Include="Fallout.Common" />
+                                                   <PackageReference Include="Automation.Fallout.Components" />
+                                                 </ItemGroup>
+                                               </Project>
+                                               """;
+
+        var result = BuildProjectMigrator.Migrate(centrallyManagedProject,
+            new MigrationPackageVersions("1.0.2", "11.0.18"), centrallyManaged: true);
+
+        await Assert.That(result.Xml).DoesNotContain("""Include="Fallout.Common" Version=""");
+        await Assert.That(result.Xml).DoesNotContain("""Include="Automation.Fallout.Components" Version=""");
+    }
+
+    /// <summary>
+    /// Central package management covers PackageReference only, so the tool downloads keep the
+    /// versions they pin.
+    /// </summary>
+    [Test]
+    public async Task Migrate_KeepsPackageDownloadVersionsWhenVersionsAreManagedCentrally()
+    {
+        var result = BuildProjectMigrator.Migrate(BlindlyRenamedProject, new MigrationPackageVersions("1.0.2", "11.0.18"),
+            centrallyManaged: true);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(result.Xml)
+                .Contains($"""Include="GitVersion.Tool" Version="[{MigrationDefaults.GitVersionToolVersion}]" """.TrimEnd());
+            await Assert.That(result.Xml)
+                .Contains($"""Include="ReportGenerator" Version="[{MigrationDefaults.ReportGeneratorVersion}]" """.TrimEnd());
+        }
+    }
+
+    [Test]
+    public async Task Migrate_IsIdempotentWhenVersionsAreManagedCentrally()
+    {
+        var versions = new MigrationPackageVersions("1.0.2", "11.0.18");
+
+        var first = BuildProjectMigrator.Migrate(BlindlyRenamedProject, versions, centrallyManaged: true);
+        var second = BuildProjectMigrator.Migrate(first.Xml, versions, centrallyManaged: true);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(second.Notes).IsEmpty();
+            await Assert.That(second.Xml).IsEqualTo(first.Xml);
+        }
+    }
 }
