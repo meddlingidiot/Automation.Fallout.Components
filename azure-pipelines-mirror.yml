@@ -1,0 +1,167 @@
+# ============================================================================
+# Mirror to GitHub
+# ============================================================================
+#
+# Pushes commits from the Azure DevOps master repo to a GitHub copy.
+# Azure DevOps stays authoritative; GitHub is a downstream copy.
+#
+# Deliberately a SEPARATE pipeline from azure-pipelines.yml:
+#   - a failing test must not stop the mirror
+#   - PR builds must never push
+#   - it needs no SDK, no feed auth, and no build
+#
+# Setup (one time):
+#   1. Create the GitHub repo EMPTY - no README, no .gitignore, no license.
+#      A repo seeded with a commit has unrelated history and the first push
+#      is rejected. See "Seeding an existing repo" at the bottom.
+#   2. Create a GitHub fine-grained PAT, scoped to that one repository,
+#      with Repository permissions -> Contents: Read and write.
+#   3. Add it to the 'Secrets' variable group as GitHubMirrorPat, marked
+#      secret (the padlock).
+#   4. Set gitHubOwner / gitHubRepo below.
+#   5. Create a new pipeline in Azure DevOps pointing at this file.
+#
+# This pipeline never force-pushes. If GitHub has diverged, the push fails
+# loudly instead of destroying commits.
+# ============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  tags:
+    include:
+      - 'v*'
+
+# Never mirror pull request builds - the merge commit is not a real branch.
+pr: none
+
+name: mirror-$(Date:yyyyMMdd)$(Rev:.r)
+
+variables:
+  - group: Secrets # Must contain GitHubMirrorPat
+
+  - name: gitHubOwner
+    value: 'meddlingidiot'
+
+  - name: gitHubRepo
+    value: 'Automation.Fallout.Components'
+
+  # 'false' mirrors main + tags only - work branches stay internal.
+  # 'true' mirrors every branch on origin. Consider what feature branch
+  # names reveal before turning this on for a public repo.
+  - name: mirrorAllBranches
+    value: 'false'
+
+jobs:
+  - job: MirrorJob
+    displayName: 'Mirror to GitHub'
+    pool:
+      name: 'Self-hosted'
+
+    steps:
+      # ----------------------------------------------------------------
+      # Full history is required: a shallow clone cannot be pushed.
+      # persistCredentials lets us fetch the other branches from origin
+      # when mirrorAllBranches is true.
+      # ----------------------------------------------------------------
+      - checkout: self
+        displayName: 'Checkout Repository'
+        fetchDepth: 0
+        persistCredentials: true
+        clean: false
+
+      - powershell: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:GITHUB_PAT)) {
+              throw "GitHubMirrorPat is empty. Add it to the 'Secrets' variable group and mark it secret."
+          }
+
+          $target = "https://github.com/$($env:GITHUB_OWNER)/$($env:GITHUB_REPO).git"
+          Write-Host "Mirroring to $target"
+
+          # Authenticate with a per-command header rather than credentials in the
+          # remote URL, so the token is never written into .git/config and never
+          # lands in a process command line.
+          #
+          # This also OVERRIDES the http.extraheader that 'persistCredentials: true'
+          # wrote for Azure DevOps - without it, git would send the Azure DevOps
+          # authorization header to github.com.
+          $pair   = "x-access-token:$($env:GITHUB_PAT)"
+          $basic  = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+          $header = "AUTHORIZATION: basic $basic"
+
+          function Push-ToGitHub {
+              param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $PushArgs)
+
+              & git -c http.extraheader="$header" push @PushArgs
+              if ($LASTEXITCODE -ne 0) {
+                  throw "git push failed (exit $LASTEXITCODE). If this is a non-fast-forward, GitHub has commits Azure DevOps does not - reconcile by hand."
+              }
+          }
+
+          $sourceRef = $env:SOURCE_BRANCH
+
+          if ($sourceRef -like 'refs/tags/*') {
+              # Tag build - your TagRelease target pushed v{version}. Mirror that tag.
+              $tag = $sourceRef -replace '^refs/tags/', ''
+              Write-Host "Tag build: pushing tag $tag"
+              Push-ToGitHub $target "refs/tags/$($tag)"
+          }
+          elseif ($env:MIRROR_ALL -eq 'true') {
+              Write-Host "Mirroring all branches"
+              & git fetch origin --prune --tags "+refs/heads/*:refs/remotes/origin/*"
+              if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit $LASTEXITCODE)" }
+
+              # strip=3 turns refs/remotes/origin/feature/x into feature/x
+              $branches = & git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin |
+                          Where-Object { $_ -and $_ -ne 'HEAD' }
+
+              foreach ($branch in $branches) {
+                  Write-Host "Pushing branch $branch"
+                  Push-ToGitHub $target "refs/remotes/origin/$($branch):refs/heads/$($branch)"
+              }
+              Push-ToGitHub $target '--tags'
+          }
+          else {
+              # Branch build. Build.SourceBranchName is only the last segment
+              # ('nukemigration' for feature/nukemigration), so derive the real
+              # name from the full ref. The checkout is a detached HEAD, which is
+              # why this pushes HEAD rather than a local branch name.
+              $branch = $sourceRef -replace '^refs/heads/', ''
+              Write-Host "Pushing branch $branch"
+              Push-ToGitHub $target "HEAD:refs/heads/$($branch)"
+              Push-ToGitHub $target '--tags'
+          }
+
+          Write-Host "Mirror complete."
+        displayName: 'Push to GitHub'
+        env:
+          GITHUB_PAT: $(GitHubMirrorPat) # Secret variables are not auto-exposed to scripts
+          GITHUB_OWNER: $(gitHubOwner)
+          GITHUB_REPO: $(gitHubRepo)
+          MIRROR_ALL: $(mirrorAllBranches)
+          SOURCE_BRANCH: $(Build.SourceBranch)
+
+# ============================================================================
+# Seeding an existing (non-empty) GitHub repo
+# ============================================================================
+# If GitHub already has commits that Azure DevOps does not, the first push is
+# rejected. Reconcile once from a local clone, then let this pipeline take over:
+#
+#   git remote add github https://github.com/OWNER/REPO.git
+#   git push github main --force     # destroys the GitHub-side history
+#   git push github --tags
+#
+# ============================================================================
+# Notes
+# ============================================================================
+# - Fine-grained PATs expire. When the push starts failing with 403, regenerate
+#   the token and update GitHubMirrorPat. Set a calendar reminder.
+# - Branch protection on the GitHub side will reject these pushes. Leave the
+#   mirrored branches unprotected, or allow the token to bypass.
+# - This mirrors code only. Work items, PRs, and pipeline history stay in
+#   Azure DevOps.
+# - A true 'git push --mirror' is deliberately not used: it deletes refs that
+#   exist only on GitHub and force-updates everything else.

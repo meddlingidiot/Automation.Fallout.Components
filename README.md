@@ -1,379 +1,382 @@
 # Automation.Fallout.Components
 
-A [Fallout](https://github.com/ChrisonSimtian/Fallout) build system library and global tool for .NET projects, providing reusable build components, pre-configured build templates, and automated setup across multiple projects.
+A **convention-based build system for .NET, delivered as a NuGet package.** Build logic lives in
+versioned components that repositories *compose*, not in scripts that repositories *copy*. A
+consuming repo holds a ten-line `Build.cs` declaring which components apply; everything those
+components do — compile, test, coverage gates, secret scanning, packaging, tagging, release —
+comes from this package and is upgraded by bumping a version.
 
-> **Migrated from NUKE.** This repository previously targeted the NUKE build system, which is no longer maintained. It now targets **Fallout**, the hard-fork successor. See [Migration from NUKE](#-migration-from-nuke) for what changed and how to update a consuming repo.
+Built on [Fallout](https://github.com/ChrisonSimtian/Fallout) (the maintained hard-fork of NUKE).
+Designed to standardize 80+ internal repositories.
 
-## 🚀 Overview
+> **Migrated from NUKE.** This repository previously targeted NUKE, which is no longer maintained.
+> See [Migration from NUKE](#-migration-from-nuke) for what changed and how to update a consuming repo.
 
-This repository contains two main projects:
+---
 
-1. **Automation.Fallout.Components** - A library of reusable Fallout build components
-2. **Automation.Fallout.Builder** - A global .NET CLI tool for automated build setup
+## 🧭 What this is — and what it isn't
 
-Together, they enable standardized, maintainable build pipelines across 80+ projects with minimal configuration.
+**It is convention-based, not template-based.** The difference is not cosmetic; it determines what
+happens when a build rule changes.
 
-## 📦 Projects
-
-### Automation.Fallout.Components
-
-A NuGet package providing modular, composable build components for Fallout builds targeting .NET 10.0.
-
-**Key Features:**
-- Component-based architecture using interface composition
-- Pre-built templates for common build scenarios
-- Reusable targets for compilation, testing, packaging, and deployment
-- Azure Pipelines *and* GitHub Actions integration, selected during setup
-- GitVersion and semantic versioning support
-
-**Available Components:**
-
-| Component | Purpose |
-|-----------|---------|
-| `IShowVersion` | Display version information from GitVersion |
-| `IClean` | Clean build artifacts |
-| `IRestore` | Restore NuGet packages |
-| `ICompile` | Compile .NET projects with configurable warning behavior |
-| `IScanForSecrets` | Scan for secrets using Gitleaks |
-| `IRunUnitTests` | Execute unit tests |
-| `IRunIntegrationTests` | Execute integration tests |
-| `IGenerateCoverageReport` | Generate code coverage reports with ReportGenerator |
-| `ITest` | Orchestrate full test pipeline |
-| `IUpdateChangelog` | Update CHANGELOG.md from Git history |
-| `IPackage` | Create NuGet packages (production only - see the platform components below) |
-| `IVelopack` | Build Velopack installers for application deployment |
-| `ITagRelease` | Create Git tags for releases |
-| `IAnnounceRelease` | Announce releases (placeholder for notifications) |
-| `IGitTagging` | Core Git tagging functionality |
-| `IPostRelease` | Post-release cleanup and tasks |
-| `ITestExecution` | Shared test execution logic supporting both VSTest and Microsoft Testing Platform (MTP) |
-
-**Platform-specific components** - pick the pair matching your [CI platform](#-ci-platform):
-
-| Component | Platform | Purpose |
-|-----------|----------|---------|
-| `IPackageAzureDevOps` | Azure DevOps | Push packages to Azure Artifacts feeds |
-| `IPackageGitHub` | GitHub | Push packages to GitHub Packages |
-| `ICreateGitHubRelease` | GitHub | Create a GitHub release from the tag, with milestone notes and assets |
-| `IPublishBlazorWasm` | GitHub | Publish Blazor WASM and deploy `wwwroot` to a static-site repository |
-| `AzurePipelinesBuild` | Azure DevOps | Build base class with Azure Pipelines helpers |
-| `GitHubActionsBuild` | GitHub | Build base class with GitHub Actions helpers |
-
-**Pre-configured Build Templates:**
-
-| Template | Includes | Use Case |
-|----------|----------|----------|
-| `CompileBuild` | Version, Clean, Compile, Restore, Secret Scanning | Simple libraries or basic projects |
-| `TestBuild` | CompileBuild + Unit/Integration Tests + Coverage | Libraries with test suites |
-| `PackageBuild` | TestBuild + Changelog + NuGet Package + Git Tag | Libraries published to NuGet |
-| `VelopackBuild` | TestBuild + Velopack Installer + Git Tag | Desktop applications with auto-updates |
-| `PackageAndVelopackBuild` | TestBuild + NuGet + Velopack + Git Tag | Projects requiring both library and app distribution |
-
-**Dependencies:**
-- Fallout.Build 11.0.18
-- Fallout.Common 11.0.18
-- SharpZipLib 1.4.2
-
-### Automation.Fallout.Builder
-
-A global .NET tool (`autofallout`) that automates the setup of Fallout build infrastructure with intelligent prompts and configuration.
-
-> **Note:** The tool command has been renamed twice: `aftrnuke` -> `aftrfallout` -> `autofallout`. Update any scripts or pipelines that still invoke either of the older names.
-
-**Key Features:**
-- Interactive setup with Spectre.Console
-- Automatic detection and installation of dependencies
-- Generates customized `Build.cs` based on project needs
-- Installs and configures required tools (GitVersion, Gitleaks)
-- Copies default configuration files
-- Upgrades build projects to .NET 10.0
-- Migrates existing Nuke repositories with `autofallout migrate`
-
-**Installation/Updates:**
-
-```bash
-dotnet tool install --global Automation.Fallout.Builder
-```
-
-**Usage:**
-
-```bash
-cd YourProject
-autofallout setup
-```
-
-The tool will guide you through:
-1. Build type selection (Compile, Test, Package, Velopack, etc.)
-2. Quality gate configuration (warnings, secrets, coverage)
-3. Project-specific settings
-4. Automatic dependency installation
-
-**What It Does:**
-- Installs/updates the Fallout CLI (`Fallout.Cli`, exposing the `fallout` command)
-- Runs `fallout :setup` to scaffold the `build/` directory
-- Creates `build/` directory structure with `_build.csproj` targeting .NET 10.0
-- Adds required NuGet packages (`Automation.Fallout.Components` at the newest released version, `Fallout.Common` pinned to the CLI version), writing the versions into `Directory.Packages.props` when the repository manages package versions centrally
-- Adds `PackageDownload` entries for GitVersion.Tool (6.8.2) and ReportGenerator (5.5.11)
-- Installs local tools via dotnet-tools.json
-- Copies default files: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `azure-pipelines.yml`
-- Generates `Build.cs` implementing selected build template
-- Adds `.fallout/`, Rider, and DotSettings sections to `.gitignore`
-- Removes legacy `Configuration.cs` if present
-
-**Dependencies:**
-- Spectre.Console 0.57.2
-- System.CommandLine 2.0.10
-
-## 🛠️ Getting Started
-
-### Quick Start
-
-1. Install the global tool:
-   ```bash
-   dotnet tool install --global Automation.Fallout.Builder
-   ```
-
-2. Navigate to your project:
-   ```bash
-   cd MyProject
-   ```
-
-3. Run setup:
-   ```bash
-   autofallout setup
-   ```
-
-4. Follow the interactive prompts to configure your build. The first question is which
-   **CI platform** the repository builds on - see [CI platform](#-ci-platform).
-
-5. Run your build:
-   ```bash
-   fallout
-   ```
-
-### 🔀 CI platform
-
-Setup asks up front whether the repository builds on **Azure DevOps** or **GitHub Actions**,
-because the two differ in more than a pipeline file. The answer decides:
-
-| | Azure DevOps | GitHub Actions |
+| | Template-based | **This system** |
 |---|---|---|
-| Build base class | `AzurePipelinesBuild` | `GitHubActionsBuild` |
-| Packaging component | `IPackageAzureDevOps` | `IPackageGitHub` |
-| Package destination | Azure Artifacts feeds | GitHub Packages |
-| Credentials | feed IDs, `az` api key | `GitHubOwner`, `GitHubToken` |
-| CI definition copied | `azure-pipelines.yml` | `.github/workflows/build.yml` |
-| `nuget.config` copied | AFTR feeds + nuget.org | nuget.org |
-| Extra components | - | `ICreateGitHubRelease` when the build tags |
+| Where the logic lives | Copied into each repo | A NuGet package the repo references |
+| Adding a build step | Edit N repos, or regenerate and re-merge | Add one interface to `Build.cs` |
+| Fixing a bug in a step | Re-apply the template across N repos, diff the drift | Publish a version, repos bump it |
+| What a repo owns | The whole script | The composition, plus deliberate overrides |
+| Drift over time | Inevitable — every repo is a fork | Structural — repos differ only where they declared a difference |
 
-Both platforms share every other component, so a build only differs where it has to.
+The single distinguishing question: **when a build rule changes, where does the fix land?** Here it
+lands in one package. That is the definition of convention over template.
 
-The `migrate` command takes the same choice as `--platform GitHubActions|AzureDevOps`
-(default `AzureDevOps`).
+**It is not a CI/CD platform.** Azure DevOps and GitHub Actions remain the platform — they schedule
+the work, provide the agents, and hold the credentials. The YAML in a consuming repo is a thin shim
+that installs the SDK and calls `build.cmd`. Everything meaningful — order, gates, versioning,
+publishing — is C# in these components, which is why the same build runs identically on a developer
+laptop and on an agent. A fair description of the whole system is *a standardized build pipeline
+distributed as a library, with a scaffolding tool to bootstrap it.*
 
-### Manual Setup (Without Tool)
+**Where templating does appear**, it is confined to the bootstrap: [`autofallout setup`](#-bootstrap-the-autofallout-tool)
+generates a starting `Build.cs`, and `DefaultBuilds/` offers ready-made compositions. Those are
+starting points — one-time text generation. They are not how behavior is delivered or updated.
 
-If you prefer manual setup:
+---
 
-1. Install Fallout globally:
-   ```bash
-   dotnet tool install -g Fallout.Cli
-   ```
+## ⚡ The model in 30 seconds
 
-2. Setup Fallout in your project:
-   ```bash
-   fallout :setup
-   ```
-
-3. Add the Components package to `build/_build.csproj`:
-   ```xml
-   <PackageReference Include="Automation.Fallout.Components" Version="1.0.85" />
-   ```
-
-4. Create your `Build.cs` implementing desired interfaces:
-   ```csharp
-   using Fallout.Common;
-   using Automation.Fallout.Components.DefaultBuilds;
-
-   class Build : TestBuild
-   {
-       public static int Main() => Execute<Build>(x => ((ITest)x).Test);
-   }
-   ```
-
-## 🔄 Migration from NUKE
-
-NUKE is no longer maintained; Fallout is its hard-fork successor. The API surface is largely identical — most migration work is renaming namespaces and package references.
-
-### Package references
-
-| NUKE | Fallout |
-|------|---------|
-| `Nuke.Common` | `Fallout.Common` |
-| `Nuke.Build` | `Fallout.Build` |
-| `Nuke.GlobalTool` | `Fallout.Cli` |
-| `Automation.Nuke.Components` | `Automation.Fallout.Components` |
-| `Automation.Nuke.Builder` | `Automation.Fallout.Builder` |
-
-### Namespaces
-
-| NUKE | Fallout |
-|------|---------|
-| `Nuke.Common` | `Fallout.Common` |
-| `Nuke.Common.CI` | `Fallout.Common.CI` |
-| `Nuke.Common.Execution` | `Fallout.Common.Execution` |
-| `Nuke.Common.IO` | `Fallout.Common.IO` |
-| `Nuke.Common.Tooling` | `Fallout.Common.Tooling` |
-| `Nuke.Common.ProjectModel` | `Fallout.Solutions` |
-| `Automation.Nuke.Components.*` | `Automation.Fallout.Components.*` |
-
-> ⚠️ **`Fallout.Solutions` is the one non-obvious rename.** Fallout 11.0 inlined the vendored solution parser and realigned the namespace to match the assembly name. It is *not* `Fallout.Common.ProjectModel` — that namespace does not exist in 11.x. This is the most common migration error.
-
-### Types
-
-| NUKE | Fallout |
-|------|---------|
-| `INukeBuild` | `IFalloutBuild` |
-| `NukeBuild` | `FalloutBuild` |
-
-### Conventions
-
-| NUKE | Fallout |
-|------|---------|
-| `.nuke/` directory | `.fallout/` directory |
-| `.nuke/parameters.json` | `.fallout/parameters.json` |
-| `nuke` CLI command | `fallout` CLI command |
-| `nuke :add-package` | `fallout :add-package` |
-
-### Target framework
-
-Fallout 11.x ships **`net10.0` assets only**. A build project left on `net8.0` will restore without error but resolve zero compile assets, producing a confusing cascade of `CS0234: The type or namespace name 'Common' does not exist in the namespace 'Fallout'`. Set:
-
-```xml
-<TargetFramework>net10.0</TargetFramework>
-```
-
-### Automated migration
-
-Fallout publishes a migration tool that performs the namespace and package rewrites:
-
-```bash
-dotnet tool install -g Fallout.Migrate
-```
-
-Review its output — it is known to emit `Fallout.Common.ProjectModel` rather than `Fallout.Solutions`, which you must correct by hand.
-
-## 🎯 Build Configuration
-
-### Parameters
-
-All build templates support common parameters through the `IHas*` interfaces:
-
-- **Solution** - Target solution file (auto-detected)
-- **Configuration** - Build configuration (Debug/Release, default: Release)
-- **BreakBuildOnWarnings** - Fail build on compiler warnings (default: false)
-- **BreakBuildOnSecretLeak** - Fail build on detected secrets (default: true)
-- **MinCoverageThreshold** - Minimum code coverage percentage (default: 80)
-- **VelopackIconPath** - Path to application icon for Velopack builds
-- **VelopackDownloadUrl** - Base URL for Velopack update downloads
-
-### Custom Components
-
-Create your own reusable build components by implementing `IFalloutBuild`:
+A component is an interface carrying a `Target` as a default-implemented property:
 
 ```csharp
-// In your build project or shared library
-using Fallout.Common;
-using Fallout.Common.IO;
-using static Fallout.Common.Tools.DotNet.DotNetTasks;
+public interface ICompile : IFalloutBuild, IHasSolution, IHasConfiguration, IHasGitVersion, IHasTests
+{
+    Target Compile => t => t
+        .DependsOn<IRestore>()
+        .Description("Compile Solution")
+        .Executes(() => DotNetBuild(s => s
+            .SetProjectFile(Solution)
+            .SetConfiguration(Configuration)
+            .SetTreatWarningsAsErrors(BreakBuildOnWarnings)
+            .SetAssemblyVersion(GitVersion.AssemblySemVer)));
+}
+```
 
-namespace Automation.Fallout.Components.Components;
+A build is the list of components you implement:
 
+```csharp
+public class Build : AzurePipelinesBuild,
+    IShowVersion, IClean, ICompile, IRestore, IScanForSecrets,
+    IRunUnitTests, IRunIntegrationTests, IGenerateCoverageReport, ITest,
+    IUpdateChangelog, IPackageAzureDevOps, ITagRelease, IAnnounceRelease
+{
+    public static int Main() => Execute<Build>(x => ((IPackageAzureDevOps)x).ReleasePackage);
+
+    int IHasTests.MinCoverageThreshold => 80;   // a deliberate deviation from the default
+}
+```
+
+Three properties follow from this shape:
+
+- **Dependencies bind by type, not by name.** `.DependsOn<IRestore>()` resolves against whatever the
+  build class implements. Implement a component and it wires itself into the graph; omit it and the
+  edge simply does not exist.
+- **Configuration is an interface member.** `int IHasTests.MinCoverageThreshold => 80;` is an
+  explicit interface implementation — compiler-checked, discoverable by Go To Definition, and
+  impossible to typo into silence the way a YAML key can be.
+- **Every step is replaceable in place.** Components expose overridable methods
+  (`ITestExecution.RunTests`, `IGitTagging.PerformGitTagging`, `IAnnounceRelease.PerformAnnouncement`)
+  so a repo can change *how* a step works without giving up the graph it sits in.
+
+---
+
+## 📐 The conventions
+
+These are the assumptions the components make. Knowing them is most of knowing this system.
+
+| Convention | The assumption | Defined in |
+|---|---|---|
+| **Solution** | The single `.sln`/`.slnx` found by Fallout's `[Solution]` injection | [`IHasSolution`](Automation.Fallout.Components/Parameters/IHasSolution.cs) |
+| **Configuration** | `Debug` on a developer machine, `Release` on a build server | [`IHasConfiguration`](Automation.Fallout.Components/Parameters/IHasConfiguration.cs) |
+| **Version** | GitVersion is the only source of version. Nothing is hand-stamped — assembly, file, informational and package versions all derive from it | [`IHasGitVersion`](Automation.Fallout.Components/Parameters/IHasGitVersion.cs) |
+| **Unit tests** | Every project whose **name contains `UnitTests`** | [`IRunUnitTests`](Automation.Fallout.Components/Components/IRunUnitTests.cs) |
+| **Integration tests** | Every project whose **name contains `IntegrationTests`** | [`IRunIntegrationTests`](Automation.Fallout.Components/Components/IRunIntegrationTests.cs) |
+| **Artifacts** | `artifacts/` at the repo root, with `test-results/`, `coverage-report/` and `packages/` beneath it | [`IHasArtifacts`](Automation.Fallout.Components/Parameters/IHasArtifacts.cs) |
+| **Scratch space** | `.tmp/` for Velopack output, Blazor publishes and downloaded tools | `IHasArtifacts`, `IVelopack` |
+| **Release branch** | `main`. It selects the production feed, and it gates tagging and announcing | [`IPackage`](Automation.Fallout.Components/Components/IPackage.cs), [`ITagRelease`](Automation.Fallout.Components/Components/ITagRelease.cs) |
+| **Tags** | Annotated, named `v{Major.Minor.Patch}`, never overwritten — an existing tag pointing elsewhere is a warning, not a force-push | [`IGitTagging`](Automation.Fallout.Components/Components/IGitTagging.cs) |
+| **Changelog** | `CHANGELOG.md` at the repo root, written from Git history | [`IUpdateChangelog`](Automation.Fallout.Components/Components/IUpdateChangelog.cs) |
+| **Server vs local** | `IsServerBuild` decides whether releases tag and push. Local runs need explicit `--force-tag-release` | [`IDoTag`](Automation.Fallout.Components/Parameters/IDoTag.cs) |
+| **Tool provisioning** | Gitleaks and the Codecov uploader are downloaded on demand into the temp directory if not already on `PATH` — no manual install step | [`IScanForSecrets`](Automation.Fallout.Components/Components/IScanForSecrets.cs), [`IGenerateCoverageReport`](Automation.Fallout.Components/Components/IGenerateCoverageReport.cs) |
+
+Follow the conventions and a repo needs no configuration at all. Deviate, and you state the
+deviation in one line.
+
+### The target graph
+
+Implementing the full set produces this order. Each edge comes from the component that owns the
+downstream target, so omitting a component removes its edges rather than breaking the chain.
+
+```
+ShowVersion ─(DependentFor)─▶ Clean ──▶ Restore ──▶ Compile ──┬──▶ UnitTests ────────┐
+                                                              └──▶ IntegrationTests ─┴──▶ CoverageReport
+                                                                                              │
+                                                  ScanForSecrets ─(runs after CoverageReport)─┤
+                                                                                              ▼
+                                                                                            Test
+                                                                                              │
+                                              UpdateChangelog ─(after Test)─────────────┐     │
+                                                                                        ▼     ▼
+                                                                                       Package
+                                                                                          │
+                                                                        ┌─────────────────┴──────────────────┐
+                                                                        ▼                                    ▼
+                                                              ReleasePackage                        ReleaseVelopack
+                                                                        └────── triggers ──▶ TagRelease ◀────┘
+                                                                                  (server builds, main only)
+```
+
+`Announce` is deliberately **not** wired into this chain — no component triggers it. Invoke it
+explicitly, or add a `Triggers` edge in your own build class once you have implemented
+`PerformAnnouncement`.
+
+---
+
+## 🎛 Overriding a convention
+
+Three levels, in increasing order of scope.
+
+**1. Change a value** — explicit interface implementation in `Build.cs`. Compile-time checked:
+
+```csharp
+int IHasTests.MinCoverageThreshold => 80;
+bool IHasTests.BreakBuildOnWarnings => false;
+bool ITestExecution.UseMicrosoftTestingPlatform => true;
+string IHasVelopack.VelopackProjectName => "MyApp.Wpf";
+```
+
+**2. Change a value for one run** — every `[Parameter]` is settable from the command line, from
+`.fallout/parameters.json`, or from the environment:
+
+```bash
+fallout Test --min-coverage-threshold 90 --configuration Release
+```
+
+**3. Change a behavior** — implement the narrower interface that owns the logic and override its
+method. The target, its dependencies and its conditions stay exactly as they were:
+
+```csharp
+class Build : TestBuild
+{
+    void ITestExecution.RunTests(string projectNameFilter)
+    {
+        // your own discovery and execution; the rest of the graph is unchanged
+    }
+}
+```
+
+To add something genuinely new, write a component of your own — it is just an interface:
+
+```csharp
 public interface IMyLint : IFalloutBuild
 {
     AbsolutePath Src => RootDirectory / "src";
 
-    Target MyLint => _ => _
+    Target MyLint => t => t
         .Description("Run custom lint checks")
-        .Executes(() =>
-        {
-            DotNet($"format {Src} --verify-no-changes");
-        });
+        .Executes(() => DotNet($"format {Src} --verify-no-changes"));
 }
+
+class Build : TestBuild, IMyLint { /* ... */ }
 ```
 
-Then add it to your build class:
+---
+
+## 🧩 Component catalog
+
+**Lifecycle**
+
+| Component | Target | Does |
+|---|---|---|
+| [`IShowVersion`](Automation.Fallout.Components/Components/IShowVersion.cs) | `ShowVersion` | Logs the resolved GitVersion ahead of everything else |
+| [`IClean`](Automation.Fallout.Components/Components/IClean.cs) | `Clean` | `dotnet clean`, then recreates the artifact directories |
+| [`IRestore`](Automation.Fallout.Components/Components/IRestore.cs) | `Restore` | `dotnet restore` for the solution |
+| [`ICompile`](Automation.Fallout.Components/Components/ICompile.cs) | `Compile` | `dotnet build`, stamping GitVersion, warnings-as-errors per `BreakBuildOnWarnings` |
+
+**Quality**
+
+| Component | Target | Does |
+|---|---|---|
+| [`ITestExecution`](Automation.Fallout.Components/Components/ITestExecution.cs) | — | Shared execution logic for VSTest and Microsoft Testing Platform. The override point for test running |
+| [`IRunUnitTests`](Automation.Fallout.Components/Components/IRunUnitTests.cs) | `UnitTests` | Runs projects matching `UnitTests` |
+| [`IRunIntegrationTests`](Automation.Fallout.Components/Components/IRunIntegrationTests.cs) | `IntegrationTests` | Runs projects matching `IntegrationTests` |
+| [`IGenerateCoverageReport`](Automation.Fallout.Components/Components/IGenerateCoverageReport.cs) | `CoverageReport` | Merges Cobertura output via ReportGenerator, **fails the build below `MinCoverageThreshold`**, optionally uploads to Codecov |
+| [`IScanForSecrets`](Automation.Fallout.Components/Components/IScanForSecrets.cs) | `ScanForSecrets` | Gitleaks over the working tree, auto-provisioning the tool. See the note in [Secret scanning](#-secret-scanning) |
+| [`ITest`](Automation.Fallout.Components/Components/ITest.cs) | `Test` | The aggregate gate — depends on coverage and secret scanning, executes nothing itself |
+
+**Release**
+
+| Component | Target | Does |
+|---|---|---|
+| [`IUpdateChangelog`](Automation.Fallout.Components/Components/IUpdateChangelog.cs) | `UpdateChangelog` | Rewrites `CHANGELOG.md` from Git history |
+| [`IPackage`](Automation.Fallout.Components/Components/IPackage.cs) | `Package` | `dotnet pack` at the GitVersion version into `artifacts/packages/`. **Produces only — never pushes** |
+| [`IVelopack`](Automation.Fallout.Components/Components/IVelopack.cs) | `ReleaseVelopack` | Builds and publishes Velopack installers, with code signing and Azure blob upload |
+| [`IGitTagging`](Automation.Fallout.Components/Components/IGitTagging.cs) | — | Shared Git identity and tag logic. The override point for tagging |
+| [`ITagRelease`](Automation.Fallout.Components/Components/ITagRelease.cs) | `TagRelease` | Creates and pushes `v{version}` on `main`, on server builds or with `--force-tag-release` |
+| [`IAnnounceRelease`](Automation.Fallout.Components/Components/IAnnounceRelease.cs) | `Announce` | Announcement hook; the default implementation only logs. Not auto-triggered |
+
+**Platform-specific** — pick the set matching your [CI platform](#-ci-platform):
+
+| Component | Platform | Does |
+|---|---|---|
+| [`AzurePipelinesBuild`](Automation.Fallout.Components/DefaultBuilds/AzurePipelinesBuild.cs) | Azure DevOps | Base class exposing `TF_BUILD`, build id and build number |
+| [`GitHubActionsBuild`](Automation.Fallout.Components/DefaultBuilds/GitHubActionsBuild.cs) | GitHub | Base class exposing `GITHUB_ACTIONS`, run id and run number |
+| [`IPackageAzureDevOps`](Automation.Fallout.Components/Components/IPackageAzureDevOps.cs) | Azure DevOps | Pushes to Azure Artifacts, choosing production or prerelease feed from the branch |
+| [`IPackageGitHub`](Automation.Fallout.Components/Components/IPackageGitHub.cs) | GitHub | Pushes to GitHub Packages for `GitHubOwner` using `GitHubToken` |
+| [`ICreateGitHubRelease`](Automation.Fallout.Components/Components/ICreateGitHubRelease.cs) | GitHub | Creates a GitHub release from the tag, with milestone notes and assets |
+| [`IPublishBlazorWasm`](Automation.Fallout.Components/Components/IPublishBlazorWasm.cs) | GitHub | Publishes Blazor WASM and deploys `wwwroot` to a static-site repository |
+
+---
+
+## 🔧 Parameter reference
+
+Every parameter below is an interface member with a default, overridable in `Build.cs`, on the
+command line, in `.fallout/parameters.json`, or via environment variable.
+
+| Parameter | Default | Owner |
+|---|---|---|
+| `Solution` | Auto-detected | `IHasSolution` |
+| `Configuration` | `Debug` locally, `Release` on a server | `IHasConfiguration` |
+| `BreakBuildOnWarnings` | `true` | `IHasTests` |
+| `BreakBuildOnSecretLeaks` | `true` — gates whether the scan **runs** | `IHasTests` |
+| `MinCoverageThreshold` | `0` (no gate until you set one) | `IHasTests` |
+| `UploadToCodecov` | `false` | `IHasTests` |
+| `CodecovToken` | `CODECOV_TOKEN` environment variable | `IHasTests` |
+| `GitleaksVersion` | `8.18.1` | `IScanForSecrets` |
+| `ForceTagRelease` | `false` | `IDoTag` |
+| `ArtifactsDirectoryParam` | `<root>/artifacts` | `IHasArtifacts` |
+| `ProductionFeedId` / `PrereleaseFeedId` | AFTR feed GUIDs | `IHasAzureDevOpsFeeds` |
+| `GitHubOwner` / `GitHubToken` | Required — throws if absent (token falls back to `GITHUB_TOKEN`) | `IHasGitHubPackages` |
+| `VelopackProjectName`, `VelopackChannel`, `KeepMaxReleases`, … | See the interface | `IHasVelopack` |
+
+> The defaults above are the ones in code. `BreakBuildOnWarnings` defaults to **true** and
+> `MinCoverageThreshold` to **0** — a fresh build is strict about warnings and silent about
+> coverage until you choose a threshold.
+
+---
+
+## 📦 Starting compositions
+
+`DefaultBuilds/` holds ready-made compositions. Treat them as **starting points**: either inherit
+one directly, or let `autofallout setup` emit the equivalent interface list into your `Build.cs` so
+the composition is visible and editable in your repo.
+
+| Composition | Adds | Use case |
+|---|---|---|
+| `CompileBuild` | Version, Clean, Restore, Compile, secret scan | Simple libraries |
+| `TestBuild` | + unit/integration tests, coverage gate | Libraries with tests |
+| `PackageBuild` | + changelog, NuGet package, tag, announce | Libraries published to a feed |
+| `VelopackBuild` | + Velopack installer, tag, announce | Desktop apps with auto-update |
+| `PackageAndVelopackBuild` | + both package and installer | Ships as a library *and* an app |
+
+> The `DefaultBuilds` classes and the scaffolder's interface lists are maintained separately and do
+> not currently match — `DefaultBuilds/TestBuild.cs` implements the packaging and Velopack
+> components too, while a scaffolded `TestBuild` gets only the test set. Prefer the scaffolded
+> composition, and read the class before inheriting it.
+
+---
+
+## 🚀 Bootstrap: the `autofallout` tool
+
+[`Automation.Fallout.Builder`](Automation.Fallout.Builder/README.md) is a global .NET tool that
+gets a repository from nothing to a working build.
+
+```bash
+dotnet tool install --global Automation.Fallout.Builder
+cd MyProject
+autofallout setup
+fallout            # run the build
+```
+
+> **Note:** The command has been renamed twice: `aftrnuke` → `aftrfallout` → `autofallout`. Update
+> any scripts or pipelines still invoking an older name, and uninstall the old tool
+> (`dotnet tool uninstall -g Automation.Fallout.Builder`) so a stale shim does not linger on `PATH`.
+
+`setup` asks which CI platform you target, which composition you want, and your quality-gate
+preferences, then:
+
+- Installs/updates the Fallout CLI (`Fallout.Cli`, exposing `fallout`) and runs `fallout :setup`
+- Creates `build/_build.csproj` targeting **net10.0**
+- References `Automation.Fallout.Components` and `Fallout.Common`, writing versions into
+  `Directory.Packages.props` when the repo uses central package management
+- Adds `PackageDownload` entries for GitVersion.Tool 6.8.2 and ReportGenerator 5.5.11
+- Copies `.gitleaks.toml`, `nuget.config`, `GitVersion.yml` and the CI definition
+- Generates `Build.cs` for the chosen composition and platform
+- Updates `.gitignore`, and removes a legacy root `Configuration.cs` if present
+
+`autofallout migrate` repairs a repository that was renamed from Nuke to Fallout but no longer
+compiles. It is non-interactive and safe in a pipeline; `--dry-run` reports without writing.
+See the [Builder README](Automation.Fallout.Builder/README.md) for the full option set.
+
+### 🔀 CI platform
+
+Setup asks up front whether the repository builds on **Azure DevOps** or **GitHub Actions**, because
+the two differ in more than a pipeline file:
+
+| | Azure DevOps | GitHub Actions |
+|---|---|---|
+| Base class | `AzurePipelinesBuild` | `GitHubActionsBuild` |
+| Packaging component | `IPackageAzureDevOps` | `IPackageGitHub` |
+| Destination | Azure Artifacts feeds | GitHub Packages |
+| Credentials | Feed IDs, `az` API key | `GitHubOwner`, `GitHubToken` |
+| CI definition | `azure-pipelines.yml` | `.github/workflows/build.yml` |
+| `nuget.config` | AFTR feeds + nuget.org | nuget.org |
+| Extra components | — | `ICreateGitHubRelease` when the build tags |
+
+Everything else is shared, so a build differs only where it must. `migrate` takes the same choice as
+`--platform GitHubActions|AzureDevOps` (default `AzureDevOps`).
+
+### Manual setup
+
+```bash
+dotnet tool install -g Fallout.Cli
+fallout :setup
+```
+
+Add the package to `build/_build.csproj`, then write `Build.cs`:
 
 ```csharp
-class Build : TestBuild, IMyLint
+using Fallout.Common;
+using Automation.Fallout.Components.Components;
+using Automation.Fallout.Components.DefaultBuilds;
+
+class Build : TestBuild
 {
-    Target Default => _ => _
-        .DependsOn(((IMyLint)this).MyLint)
-        .DependsOn(((ITest)this).Test);
+    public static int Main() => Execute<Build>(x => ((ITest)x).Test);
 }
 ```
 
-## 📋 NuGet Configuration
-
-This solution uses a multi-source NuGet configuration with package source mapping:
-
-**Sources:**
-- **AFTR Production** - Production packages from Azure Artifacts
-- **AFTR Prerelease** - Prerelease/beta packages from Azure Artifacts
-- **nuget.org** - Public NuGet packages
-
-**Package Routing:**
-- `Automation.*`, `FuelTaxAutomation.*`, `PMFuelTax*.*` → AFTR feeds
-- All other packages (including `Fallout.*`) → nuget.org
-
-See `nuget.config` for details.
-
-## 🔧 Requirements
-
-**To run the builder tool:**
-- .NET SDK 8.0 or higher
-
-**To build/run generated Fallout builds:**
-- .NET SDK 10.0
-- Git (for versioning and tagging) — the repository must have at least one commit, or GitVersion injection fails with `Could not find commit information`
-- Gitleaks (for secret scanning) - install separately
-
-**Auto-installed by the tool:**
-- Fallout.Cli (latest) — the renamed successor to the unlisted `Fallout.GlobalTool`
-- GitVersion.Tool 6.8.2 (PackageDownload)
-- ReportGenerator 5.5.11 (PackageDownload)
-
-## 📁 Generated Project Structure
-
-After running `autofallout setup`, your project will have:
+### Generated layout
 
 ```
 YourProject/
 ├── .fallout/
-│   ├── parameters.json            # Fallout build parameters (solution, secrets)
-│   └── build.schema.json          # Generated schema for editor autocomplete
+│   ├── parameters.json            # Build parameters (solution, secrets)
+│   └── build.schema.json          # Schema for editor autocomplete
 ├── build/
-│   ├── Build.cs                   # Generated build script
-│   └── _build.csproj              # Build project (net10.0)
-├── .gitleaks.toml                 # Gitleaks configuration
-├── nuget.config                   # NuGet source configuration
-├── GitVersion.yml                 # GitVersion configuration
-├── azure-pipelines.yml            # Sample Azure Pipelines YAML
-├── build.cmd                      # Windows build script
-├── build.ps1                      # PowerShell build script
-└── build.sh                       # Unix build script
+│   ├── Build.cs                   # Your composition
+│   └── _build.csproj              # net10.0
+├── .gitleaks.toml
+├── nuget.config
+├── GitVersion.yml
+├── azure-pipelines.yml            # or .github/workflows/build.yml
+├── build.cmd / build.ps1 / build.sh
 ```
 
-## 🚢 CI/CD Integration
+---
 
-### Azure Pipelines
+## 🚢 CI/CD integration
 
-All build templates inherit from `AzurePipelinesBuild` which provides:
-- Automatic detection of Azure Pipelines environment
-- Build reason and commit info
-- Conditional execution based on CI context
-
-Example `azure-pipelines.yml`:
+The pipeline definition stays deliberately thin — install the SDK, restore tools, call the build:
 
 ```yaml
 trigger:
@@ -383,6 +386,9 @@ pool:
   vmImage: 'windows-latest'
 
 steps:
+- checkout: self
+  fetchDepth: 0                    # GitVersion needs full history
+
 - task: UseDotNet@2
   displayName: 'Install .NET SDK'
   inputs:
@@ -395,66 +401,15 @@ steps:
   displayName: 'Run Fallout build'
 ```
 
-> **Checkout depth:** GitVersion needs full history. Set `fetchDepth: 0` on your checkout step, otherwise version resolution fails on CI.
+Because the logic is in C#, the same command reproduces a CI failure locally. `IsServerBuild` is the
+only behavioral difference, and it is confined to tagging and pushing.
 
-### Non-Interactive Mode
-
-For CI environments, pre-create your `_build.csproj` and commit your `Build.cs`. The tool becomes a no-op if everything is already configured.
-
-## 📊 Code Coverage
-
-The `IGenerateCoverageReport` component uses ReportGenerator to create coverage reports:
-
-- Generates HTML reports in `artifacts/coverage/`
-- Enforces minimum coverage thresholds via `MinCoverageThreshold` parameter
-- Ignores files in `artifacts/` directory
-
-Coverage is automatically collected by `coverlet.collector` during test execution.
-
-## 🔐 Secret Scanning
-
-The `IScanForSecrets` component uses Gitleaks to prevent committing sensitive data:
-
-- Scans entire repository history
-- Uses `.gitleaks.toml` configuration
-- Can break builds with `BreakBuildOnSecretLeak` parameter
-- Install Gitleaks separately: https://github.com/gitleaks/gitleaks
-
-## 📦 Packaging & Releases
-
-### NuGet Packages
-
-`IPackage` component:
-- Updates CHANGELOG.md from Git commits
-- Generates NuGet packages
-- Outputs to `artifacts/` directory
-- Uses GitVersion for semantic versioning
-
-`IPackage` only *produces* packages. Pushing them lives in a platform-specific component,
-because the destination differs - implement one of:
-
-- **`IPackageAzureDevOps`** - pushes to Azure Artifacts, picking the production or prerelease
-  feed from the current branch (`IHasAzureDevOpsFeeds`).
-- **`IPackageGitHub`** - pushes to GitHub Packages for `GitHubOwner` using `GitHubToken`
-  (`IHasGitHubPackages`). Skips the push on local runs unless `--force-tag-release` is passed.
-
-The setup wizard picks the right one for you from the [CI platform](#-ci-platform) answer.
-
-### Velopack Deployments
-
-`IVelopack` component:
-- Builds Windows installers with Squirrel/Velopack
-- Supports custom icons and download URLs
-- Handles .NET runtime bundling
-- Conditional runtime selection based on target framework
+---
 
 ## 🧪 Testing
 
-### Microsoft Testing Platform (MTP) Support
-
-The `ITestExecution` interface supports both VSTest and Microsoft Testing Platform (MTP) based test frameworks (e.g., TUnit, TUnit-based runners).
-
-By default, tests run via `dotnet test` using the VSTest protocol. If your test projects use an MTP-based framework, override `UseMicrosoftTestingPlatform` in your build class:
+`ITestExecution` supports both VSTest and the Microsoft Testing Platform (MTP — TUnit and similar).
+Default is VSTest via `dotnet test` with `XPlat Code Coverage`. For MTP projects:
 
 ```csharp
 class Build : TestBuild
@@ -465,92 +420,171 @@ class Build : TestBuild
 }
 ```
 
-**Why this matters:** On the .NET 10 SDK, `dotnet test` no longer supports the VSTest protocol for MTP-based test apps. When `UseMicrosoftTestingPlatform` is `true`, the test executable is invoked directly, bypassing VSTest entirely. MTP mode provides:
-- Direct test binary execution (no VSTest adapter required)
-- Built-in Cobertura coverage output (`--coverage-output-format cobertura` on server builds)
-- TRX report generation per project and target framework
-- Multi-TFM support — each target framework is executed independently
+**Why it matters:** on the .NET 10 SDK, `dotnet test` no longer supports the VSTest protocol for
+MTP-based test apps. In MTP mode the test binary is executed directly, which also gives per-project
+and per-TFM TRX reports, Cobertura coverage on server builds, and independent execution of each
+target framework. Projects must be built first — MTP mode runs the binary from the output directory.
 
-> **Note:** When using MTP mode, ensure your projects are built before running tests (`EnableNoBuild` is not used in MTP mode — the build step runs the binary from the output directory).
+### This repository's own tests
 
-### Running Unit Tests
-
-This repository's own test project uses **TUnit**, which is MTP-based. On the .NET 10 SDK, `dotnet test` fails with `Testing with VSTest target is no longer supported`. Run the test binary directly instead:
+The test project uses TUnit, so `dotnet test` fails here with
+`Testing with VSTest target is no longer supported`. Run the binary directly:
 
 ```bash
 dotnet build Automation.Fallout.Components.sln
 ./Automation.Fallout.Builder.UnitTests/bin/Debug/net8.0/Automation.Fallout.Builder.UnitTests.exe
 ```
 
-The test project validates:
-- Build file generation logic
-- Default build discovery
-- NuGet package installation and `.gitignore` management
+---
 
-## 🤝 Contributing
+## 📊 Code coverage
 
-This system is designed for use across 80+ internal projects. When contributing:
+`IGenerateCoverageReport` merges every `coverage.cobertura.xml` under `artifacts/test-results/` with
+ReportGenerator, writing HTML, Cobertura and JSON summary output to `artifacts/coverage-report/`. It
+reads line coverage back from `Summary.json` and **throws when it is below `MinCoverageThreshold`**,
+which is what makes the threshold a real gate. With no coverage files present it logs a warning and
+skips rather than failing. Set `UploadToCodecov` to publish the merged report; the uploader is
+downloaded on demand.
 
-1. Ensure backward compatibility
-2. Update both `Automation.Fallout.Components` and `Automation.Fallout.Builder` in sync
-3. Test against multiple project types
-4. Update CHANGELOG.md with changes
-5. Keep components focused and composable
+## 🔐 Secret scanning
 
-## 📝 Version History
+`IScanForSecrets` runs Gitleaks over the working tree, downloading the pinned version
+(`GitleaksVersion`, default 8.18.1) into the temp directory when it is not already on `PATH` — no
+manual install step.
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+> **Read this before relying on it as a gate.** `BreakBuildOnSecretLeaks` controls whether the scan
+> **runs**, not whether findings fail the build: the target is gated by `OnlyWhenDynamic`, and
+> Gitleaks is invoked with `--exit-code 0`, so findings are logged and the build continues. Treat the
+> current behavior as *reporting*, and check the log. Removing `--exit-code 0` in
+> [`IScanForSecrets`](Automation.Fallout.Components/Components/IScanForSecrets.cs) is what turns it
+> into an enforcing gate.
 
-**Current Version:** 1.0.85
+## 📦 Packaging and releases
 
-**Recent Changes:**
-- Migrated from NUKE to the Fallout build system (Fallout.Common / Fallout.Build 11.0.18)
-- Renamed `Automation.Nuke.Components` → `Automation.Fallout.Components` and `Automation.Nuke.Builder` → `Automation.Fallout.Builder`
-- Retargeted the build project to `net10.0` (required by Fallout 11.x)
-- Updated `Nuke.Common.ProjectModel` usages to `Fallout.Solutions`
+`IPackage` only *produces* packages — pushing lives in a platform component because the destination
+differs:
 
-## 📖 Additional Documentation
+- **`IPackageAzureDevOps`** — pushes to Azure Artifacts, selecting the production feed on `main` and
+  the prerelease feed otherwise, with `az` as the API key and duplicate pushes skipped.
+- **`IPackageGitHub`** — pushes to GitHub Packages for `GitHubOwner` using `GitHubToken`, skipping
+  the push on local runs unless `--force-tag-release` is passed.
 
-- [Builder Tool README](Automation.Fallout.Builder/README.md) - Detailed `autofallout` documentation
-- [Fallout Documentation](https://github.com/ChrisonSimtian/Fallout) - Official Fallout build system docs
-- [GitVersion Docs](https://gitversion.net/) - Semantic versioning configuration
+Both trigger `TagRelease` on server builds. Tagging is conservative by design: an existing tag that
+points somewhere other than `HEAD` produces a warning, never a force-push.
+
+`IVelopack` builds Windows installers, handling runtime bundling, code signing and Azure blob
+upload, keeping `KeepMaxReleases` (default 3) releases per channel.
+
+---
+
+## 📋 NuGet configuration
+
+Multi-source configuration with package source mapping:
+
+- **AFTR Production** / **AFTR Prerelease** — Azure Artifacts
+- **nuget.org** — public packages
+
+Routing: `Automation.*`, `FuelTaxAutomation.*`, `PMFuelTax*.*` → AFTR feeds; everything else,
+**including `Fallout.*`**, → nuget.org. See [`nuget.config`](nuget.config).
+
+## 🔧 Requirements
+
+**To run the builder tool:** .NET SDK 8.0+
+
+**To run a generated build:**
+- .NET SDK 10.0 — Fallout 11.x ships net10.0 assets only
+- Git with real history — GitVersion fails on a shallow clone or an empty repository
+
+**Provisioned for you:** `Fallout.Cli`, GitVersion.Tool 6.8.2 and ReportGenerator 5.5.11 (as
+`PackageDownload`), plus Gitleaks and the Codecov uploader downloaded on demand.
+
+---
+
+## 🔄 Migration from NUKE
+
+The API surface is largely identical — most of the work is renaming.
+
+**Packages:** `Nuke.Common` → `Fallout.Common`, `Nuke.Build` → `Fallout.Build`, `Nuke.GlobalTool` →
+`Fallout.Cli`, `Automation.Nuke.Components` → `Automation.Fallout.Components`,
+`Automation.Nuke.Builder` → `Automation.Fallout.Builder`.
+
+**Namespaces:** `Nuke.Common.*` → `Fallout.Common.*`, and `Nuke.Common.ProjectModel` →
+**`Fallout.Solutions`**.
+
+> ⚠️ **`Fallout.Solutions` is the one non-obvious rename.** Fallout 11.0 inlined the vendored
+> solution parser and realigned the namespace to the assembly name. It is *not*
+> `Fallout.Common.ProjectModel` — that namespace does not exist in 11.x. This is the most common
+> migration error, and the automated migration tool gets it wrong.
+
+**Types:** `INukeBuild` → `IFalloutBuild`, `NukeBuild` → `FalloutBuild`.
+
+**Conventions:** `.nuke/` → `.fallout/`, `nuke` → `fallout`, `nuke :add-package` →
+`fallout :add-package`.
+
+**Target framework:** set `<TargetFramework>net10.0</TargetFramework>`. A build project left on
+`net8.0` restores without error but resolves zero compile assets, producing a confusing cascade of
+`CS0234`.
+
+Fallout publishes `dotnet tool install -g Fallout.Migrate` for the rewrites; review its output.
+`autofallout migrate` repairs what it leaves behind.
+
+---
 
 ## 🐛 Troubleshooting
 
-**`CS0234: The type or namespace name 'Common' does not exist in the namespace 'Fallout'`**
-- Your build project is not targeting `net10.0`. Fallout 11.x ships net10.0 assets only, so restore silently succeeds while resolving no compile assets.
+**`CS0234: 'Common' does not exist in the namespace 'Fallout'`**
+Build project is not targeting `net10.0`.
 
-**`CS0234: The type or namespace name 'ProjectModel' does not exist in the namespace 'Fallout.Common'`**
-- Replace `using Fallout.Common.ProjectModel;` with `using Fallout.Solutions;` (renamed in Fallout 11.0).
-
-**"Fallout not found"**
-- Ensure .NET global tools are in PATH
-- Run `dotnet tool install -g Fallout.Cli`
+**`CS0234: 'ProjectModel' does not exist in the namespace 'Fallout.Common'`**
+Replace `using Fallout.Common.ProjectModel;` with `using Fallout.Solutions;`.
 
 **`Could not find commit information`**
-- The repository has no commits, or was cloned with a shallow fetch. GitVersion requires real history — make an initial commit, and set `fetchDepth: 0` on CI checkout.
+No commits, or a shallow clone. GitVersion needs real history — set `fetchDepth: 0` on CI checkout.
 
 **`Missing package reference/download` for GitVersion.Tool**
-- Add `<PackageDownload Include="GitVersion.Tool" Version="[6.8.2]" />` to `build/_build.csproj`.
+Add `<PackageDownload Include="GitVersion.Tool" Version="[6.8.2]" />` to `build/_build.csproj`.
 
-**Build fails targeting net10.0**
-- Install .NET 10 SDK
+**Tests are not discovered**
+Test projects are matched by name. A project must contain `UnitTests` or `IntegrationTests` in its
+name to be picked up.
+
+**Coverage report is empty or skipped**
+No `coverage.cobertura.xml` was produced under `artifacts/test-results/`. For MTP projects, set
+`UseMicrosoftTestingPlatform => true`.
+
+**`Testing with VSTest target is no longer supported`**
+An MTP test project on the .NET 10 SDK. Set `UseMicrosoftTestingPlatform => true`.
 
 **Package not found**
-- Verify `nuget.config` has correct Azure Artifacts feeds
-- Check package source mapping configuration — `Fallout.*` resolves from nuget.org, not the AFTR feeds
+Check package source mapping — `Fallout.*` resolves from nuget.org, not the AFTR feeds.
 
-**Gitleaks errors**
-- Install Gitleaks: https://github.com/gitleaks/gitleaks
-- Verify `.gitleaks.toml` exists
+**"Fallout not found"**
+`dotnet tool install -g Fallout.Cli`, and confirm global tools are on `PATH`.
 
-**Coverage reports not generated**
-- Ensure ReportGenerator is in PackageDownload
-- Check `artifacts/coverage/` directory permissions
+---
+
+## 🤝 Contributing
+
+This package is consumed by 80+ repositories, so a change here is a change everywhere:
+
+1. Preserve backward compatibility — adding a component is safe, changing an existing target's
+   contract is not
+2. Keep `Automation.Fallout.Components` and `Automation.Fallout.Builder` in sync; if a scaffolded
+   composition changes, update `BuildFileGenerator` in the same change
+3. Keep components single-purpose and composable — put shared logic in an overridable method rather
+   than duplicating it into a target
+4. Update [CHANGELOG.md](CHANGELOG.md)
+
+## 📖 Further reading
+
+- [Builder tool README](Automation.Fallout.Builder/README.md) — full `autofallout` documentation
+- [Fallout](https://github.com/ChrisonSimtian/Fallout) — the underlying build system
+- [GitVersion](https://gitversion.net/) — versioning configuration
+- [CHANGELOG.md](CHANGELOG.md) — version history
 
 ## 📄 License
 
-[Your License Here]
+Apache License 2.0 — see [LICENSE](LICENSE).
 
 ## 👤 Authors
 
