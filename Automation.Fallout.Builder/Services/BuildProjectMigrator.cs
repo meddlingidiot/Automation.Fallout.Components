@@ -16,7 +16,11 @@ public class BuildProjectMigrationResult
 /// </summary>
 public static class BuildProjectMigrator
 {
-    public static BuildProjectMigrationResult Migrate(string projectXml, MigrationOptions options)
+    /// <summary>Pins the versions this tool shipped with. Prefer the overload taking resolved versions.</summary>
+    public static BuildProjectMigrationResult Migrate(string projectXml, MigrationOptions options) =>
+        Migrate(projectXml, MigrationPackageVersions.FromOptions(options));
+
+    public static BuildProjectMigrationResult Migrate(string projectXml, MigrationPackageVersions versions)
     {
         var doc = XDocument.Parse(projectXml);
         var root = doc.Root ?? throw new InvalidOperationException("The build project file has no root element.");
@@ -24,7 +28,7 @@ public static class BuildProjectMigrator
 
         RenameNukeProperties(root, notes);
         UpgradeTargetFramework(root, notes);
-        MigratePackageReferences(root, options, notes);
+        MigratePackageReferences(root, versions, notes);
         UpsertPackageDownload(root, "GitVersion.Tool", MigrationDefaults.GitVersionToolVersion, notes);
         UpsertPackageDownload(root, "ReportGenerator", MigrationDefaults.ReportGeneratorVersion, notes);
 
@@ -58,7 +62,7 @@ public static class BuildProjectMigrator
         targetFramework.Value = MigrationDefaults.TargetFramework;
     }
 
-    private static void MigratePackageReferences(XElement root, MigrationOptions options, List<string> notes)
+    private static void MigratePackageReferences(XElement root, MigrationPackageVersions versions, List<string> notes)
     {
         var references = ByLocalName(root, "PackageReference").ToList();
 
@@ -77,8 +81,8 @@ public static class BuildProjectMigrator
             reference.Remove();
         }
 
-        UpsertPackageReference(root, "Fallout.Common", options.ResolvedFalloutCommonVersion, notes);
-        UpsertPackageReference(root, "Automation.Fallout.Components", options.ResolvedComponentsVersion, notes);
+        UpsertPackageReference(root, "Fallout.Common", versions.FalloutCommon, notes);
+        UpsertPackageReference(root, "Automation.Fallout.Components", versions.Components, notes);
     }
 
     private static void UpsertPackageReference(XElement root, string packageId, string version, List<string> notes)

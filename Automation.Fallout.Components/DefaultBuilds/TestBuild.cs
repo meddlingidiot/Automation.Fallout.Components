@@ -6,7 +6,7 @@ namespace Automation.Fallout.Components.DefaultBuilds;
 
 public class TestBuild : AzurePipelinesBuild, IShowVersion, IClean, ICompile, IRestore, IScanForSecrets, 
     IRunUnitTests, IRunIntegrationTests, IGenerateCoverageReport, ITest, IUpdateChangelog,
-    IPackage, IVelopack, ITagRelease, IAnnounceRelease
+    IPackageAzureDevOps, IVelopack, ITagRelease, IAnnounceRelease
 {
     public static int Main() => Execute<TestBuild>(
         x => ((ITest)x).Test);

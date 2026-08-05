@@ -1,13 +1,13 @@
 # ============================================================================
-# Azure Pipelines Configuration for Nuke Build
+# Azure Pipelines Configuration for Fallout Build
 # ============================================================================
 #
 # Build Architecture:
-#   - Build Logic: All build logic is in Nuke (build/Build.cs)
+#   - Build Logic: All build logic is in Fallout (build/Build.cs)
 #   - CI/CD Orchestration: This YAML handles pipeline triggers and artifact publishing
 #   - Base Class: All DefaultBuilds inherit from AzurePipelinesBuild
 #
-# Nuke Targets (defined in build/Build.cs and DefaultBuilds):
+# Fallout Targets (defined in build/Build.cs and DefaultBuilds):
 #   - ReleasePackage: Compile → Test → Package → Push to NuGet feed
 #   - ReleaseVelopack: Compile → Test → Build Velopack → Upload to Azure Blob
 #   - TagRelease: Tag and push git release (auto-triggered on main branch)
@@ -54,7 +54,7 @@ stages:
     displayName: 'Build, Test, and Package'
     jobs:
       - job: BuildJob
-        displayName: 'Nuke Build'
+        displayName: 'Fallout Build'
         pool:
           name: 'Self-hosted'
 
@@ -83,7 +83,7 @@ stages:
             displayName: 'Authenticate to Azure Artifacts'
 
           # ----------------------------------------------------------------
-          # Build: Run Nuke Build (uses default target from Build.cs)
+          # Build: Run Fallout Build (uses default target from Build.cs)
           # Default target is ReleasePackage, which performs:
           #   1. ShowVersion → Clean → Restore → Compile
           #   2. ScanSecrets → UnitTests → IntegrationTests → CoverageReport
@@ -93,7 +93,7 @@ stages:
           - script: |
               dotnet tool restore
               dotnet run --project .\build\_build.csproj -- --azure-blob-sas-token "$(AzureBlobSasToken)" --artifacts-directory-param "$(Build.ArtifactStagingDirectory)"
-            displayName: 'Execute Nuke Build'
+            displayName: 'Execute Fallout Build'
             workingDirectory: $(Build.SourcesDirectory)
             env:
               AZUREBLOBSASTOKEN: $(AzureBlobSasToken)

@@ -15,12 +15,21 @@ public static class NuGetVersionResolver
 {
     public static async Task<string?> GetLatestStableVersionAsync(string packageId, string workingDirectory)
     {
-        var (succeeded, output) = await NuGetPackageInstaller.RunDotNetCommandCaptureAsync(
+        var (succeeded, output, error) = await NuGetPackageInstaller.RunDotNetCommandCaptureAsync(
             $"package search {packageId} --exact-match --format json", workingDirectory);
 
         if (!succeeded)
         {
             AnsiConsole.MarkupLine($"[yellow]Could not query the feeds for {packageId.EscapeMarkup()}[/]");
+
+            // 'dotnet package search' aborts on the first source that rejects it, so one feed needing
+            // credentials loses the results from every other feed as well.
+            if (NeedsCredentials(error) || NeedsCredentials(output))
+            {
+                AnsiConsole.MarkupLine(
+                    "[yellow]A feed rejected the request. Set the credentials it needs - a GitHub Packages feed reads %GITHUB_TOKEN% - or pass the version explicitly.[/]");
+            }
+
             return null;
         }
 
@@ -86,6 +95,11 @@ public static class NuGetVersionResolver
     }
 
     private static bool IsPrerelease(string version) => version.Contains('-', StringComparison.Ordinal);
+
+    public static bool NeedsCredentials(string output) =>
+        output.Contains("401", StringComparison.Ordinal) ||
+        output.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) ||
+        output.Contains("403", StringComparison.Ordinal);
 
     private static int Compare(string left, string right)
     {

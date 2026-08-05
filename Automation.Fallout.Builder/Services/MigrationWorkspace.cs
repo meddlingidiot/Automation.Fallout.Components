@@ -25,6 +25,9 @@ public class MigrationWorkspace
 
     public bool DryRun => _options.DryRun;
 
+    /// <summary>The running report, so callers can record a skip they decided on themselves.</summary>
+    public MigrationReport Report => _report;
+
     /// <summary>Set once something has actually been backed up, so the summary can point at it.</summary>
     public string? BackupDirectory { get; private set; }
 

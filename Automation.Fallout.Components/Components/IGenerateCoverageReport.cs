@@ -1,7 +1,9 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Automation.Fallout.Components.Parameters;
 using Fallout.Common;
 using Fallout.Common.IO;
+using Fallout.Common.Tooling;
 using Fallout.Common.Tools.ReportGenerator;
 using static Fallout.Common.Tools.ReportGenerator.ReportGeneratorTasks;
 
@@ -47,5 +49,58 @@ public interface IGenerateCoverageReport : IFalloutBuild, IHasTests, IHasArtifac
             {
                 throw new Exception($"Coverage {lineCoverage:F2}% is below threshold {MinCoverageThreshold}%");
             }
+
+            if (UploadToCodecov)
+            {
+                EnsureCodecovUploaderInstalled().Wait();
+                UploadCoverageToCodecov(CoverageReportDirectory / "Cobertura.xml");
+            }
         });
+
+    AbsolutePath CodecovUploaderPath
+    {
+        get
+        {
+            var exe = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "codecov.exe" : "codecov";
+            return TemporaryDirectory / "codecov" / exe;
+        }
+    }
+
+    private async Task EnsureCodecovUploaderInstalled()
+    {
+        if (CodecovUploaderPath.FileExists()) return;
+
+        var os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
+               : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "linux"
+               : "macos";
+        var exe = os == "windows" ? "codecov.exe" : "codecov";
+        var downloadUrl = $"https://uploader.codecov.io/latest/{os}/{exe}";
+
+        Serilog.Log.Information("Downloading Codecov uploader from {Url}...", downloadUrl);
+
+        var installDir = TemporaryDirectory / "codecov";
+        installDir.CreateDirectory();
+
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("User-Agent", "fallout-build");
+        var bytes = await client.GetByteArrayAsync(downloadUrl);
+        await File.WriteAllBytesAsync(CodecovUploaderPath, bytes);
+
+        if (os != "windows")
+            ProcessTasks.StartProcess("chmod", $"+x \"{CodecovUploaderPath}\"").AssertZeroExitCode();
+
+        Serilog.Log.Information("Codecov uploader installed to {Path}", CodecovUploaderPath);
+    }
+
+    private void UploadCoverageToCodecov(AbsolutePath coberturaFile)
+    {
+        // -Z: exit non-zero on upload errors (uploader defaults to exit 0 even on failure)
+        var args = $"--file \"{coberturaFile}\" --rootDir \"{RootDirectory}\" -Z";
+
+        if (!string.IsNullOrEmpty(CodecovToken))
+            args += $" --token \"{CodecovToken}\"";
+
+        Serilog.Log.Information("Uploading coverage to Codecov...");
+        ProcessTasks.StartProcess(CodecovUploaderPath, args, logOutput: true).AssertZeroExitCode();
+    }
 }

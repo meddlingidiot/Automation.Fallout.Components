@@ -44,6 +44,12 @@ class Program
             Description = "Leave azure-pipelines.yml, GitVersion.yml and nuget.config untouched."
         };
 
+        var platformOption = new Option<BuildPlatform?>("--platform")
+        {
+            Description = "CI platform whose root items get refreshed. " +
+                          "Detected from the feeds in the repository's nuget.config when omitted."
+        };
+
         var refreshPackagesOption = new Option<bool>("--refresh-packages")
         {
             Description = "After repairing the project, run 'dotnet add package' to move to the newest feed versions."
@@ -71,6 +77,7 @@ class Program
         migrateCommand.Options.Add(dryRunOption);
         migrateCommand.Options.Add(noBackupOption);
         migrateCommand.Options.Add(keepRootItemsOption);
+        migrateCommand.Options.Add(platformOption);
         migrateCommand.Options.Add(refreshPackagesOption);
         migrateCommand.Options.Add(falloutVersionOption);
         migrateCommand.Options.Add(componentsVersionOption);
@@ -84,6 +91,7 @@ class Program
                 DryRun = parseResult.GetValue(dryRunOption),
                 NoBackup = parseResult.GetValue(noBackupOption),
                 KeepRootItems = parseResult.GetValue(keepRootItemsOption),
+                Platform = parseResult.GetValue(platformOption),
                 RefreshPackages = parseResult.GetValue(refreshPackagesOption),
                 FalloutCommonVersion = parseResult.GetValue(falloutVersionOption),
                 ComponentsVersion = parseResult.GetValue(componentsVersionOption),

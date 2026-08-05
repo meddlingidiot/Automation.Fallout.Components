@@ -23,7 +23,7 @@ A NuGet package providing modular, composable build components for Fallout build
 - Component-based architecture using interface composition
 - Pre-built templates for common build scenarios
 - Reusable targets for compilation, testing, packaging, and deployment
-- Azure Pipelines integration
+- Azure Pipelines *and* GitHub Actions integration, selected during setup
 - GitVersion and semantic versioning support
 
 **Available Components:**
@@ -40,13 +40,24 @@ A NuGet package providing modular, composable build components for Fallout build
 | `IGenerateCoverageReport` | Generate code coverage reports with ReportGenerator |
 | `ITest` | Orchestrate full test pipeline |
 | `IUpdateChangelog` | Update CHANGELOG.md from Git history |
-| `IPackage` | Create NuGet packages |
+| `IPackage` | Create NuGet packages (production only - see the platform components below) |
 | `IVelopack` | Build Velopack installers for application deployment |
 | `ITagRelease` | Create Git tags for releases |
 | `IAnnounceRelease` | Announce releases (placeholder for notifications) |
 | `IGitTagging` | Core Git tagging functionality |
 | `IPostRelease` | Post-release cleanup and tasks |
 | `ITestExecution` | Shared test execution logic supporting both VSTest and Microsoft Testing Platform (MTP) |
+
+**Platform-specific components** - pick the pair matching your [CI platform](#-ci-platform):
+
+| Component | Platform | Purpose |
+|-----------|----------|---------|
+| `IPackageAzureDevOps` | Azure DevOps | Push packages to Azure Artifacts feeds |
+| `IPackageGitHub` | GitHub | Push packages to GitHub Packages |
+| `ICreateGitHubRelease` | GitHub | Create a GitHub release from the tag, with milestone notes and assets |
+| `IPublishBlazorWasm` | GitHub | Publish Blazor WASM and deploy `wwwroot` to a static-site repository |
+| `AzurePipelinesBuild` | Azure DevOps | Build base class with Azure Pipelines helpers |
+| `GitHubActionsBuild` | GitHub | Build base class with GitHub Actions helpers |
 
 **Pre-configured Build Templates:**
 
@@ -132,12 +143,33 @@ The tool will guide you through:
    aftrfallout setup
    ```
 
-4. Follow the interactive prompts to configure your build
+4. Follow the interactive prompts to configure your build. The first question is which
+   **CI platform** the repository builds on - see [CI platform](#-ci-platform).
 
 5. Run your build:
    ```bash
    fallout
    ```
+
+### 🔀 CI platform
+
+Setup asks up front whether the repository builds on **Azure DevOps** or **GitHub Actions**,
+because the two differ in more than a pipeline file. The answer decides:
+
+| | Azure DevOps | GitHub Actions |
+|---|---|---|
+| Build base class | `AzurePipelinesBuild` | `GitHubActionsBuild` |
+| Packaging component | `IPackageAzureDevOps` | `IPackageGitHub` |
+| Package destination | Azure Artifacts feeds | GitHub Packages |
+| Credentials | feed IDs, `az` api key | `GitHubOwner`, `GitHubToken` |
+| CI definition copied | `azure-pipelines.yml` | `.github/workflows/build.yml` |
+| `nuget.config` copied | AFTR feeds + nuget.org | nuget.org |
+| Extra components | - | `ICreateGitHubRelease` when the build tags |
+
+Both platforms share every other component, so a build only differs where it has to.
+
+The `migrate` command takes the same choice as `--platform GitHubActions|AzureDevOps`
+(default `AzureDevOps`).
 
 ### Manual Setup (Without Tool)
 
@@ -397,6 +429,16 @@ The `IScanForSecrets` component uses Gitleaks to prevent committing sensitive da
 - Generates NuGet packages
 - Outputs to `artifacts/` directory
 - Uses GitVersion for semantic versioning
+
+`IPackage` only *produces* packages. Pushing them lives in a platform-specific component,
+because the destination differs - implement one of:
+
+- **`IPackageAzureDevOps`** - pushes to Azure Artifacts, picking the production or prerelease
+  feed from the current branch (`IHasAzureDevOpsFeeds`).
+- **`IPackageGitHub`** - pushes to GitHub Packages for `GitHubOwner` using `GitHubToken`
+  (`IHasGitHubPackages`). Skips the push on local runs unless `--force-tag-release` is passed.
+
+The setup wizard picks the right one for you from the [CI platform](#-ci-platform) answer.
 
 ### Velopack Deployments
 

@@ -7,10 +7,10 @@ namespace Automation.Fallout.Components.DefaultBuilds;
 public class PackageAndVelopackBuild : AzurePipelinesBuild, IShowVersion,
     IClean, ICompile, IRestore, IScanForSecrets, IRunUnitTests, IRunIntegrationTests, 
     IGenerateCoverageReport, ITest, IUpdateChangelog,
-    IPackage, IVelopack, ITagRelease, IAnnounceRelease
+    IPackageAzureDevOps, IVelopack, ITagRelease, IAnnounceRelease
 {
     public static int Main() => Execute<PackageAndVelopackBuild>(
-        x => ((IPackage)x).ReleasePackage, 
+        x => ((IPackageAzureDevOps)x).ReleasePackage, 
         y => ((IVelopack)y).ReleaseVelopack);
 
     string IHasVelopack.VelopackProjectName => "Automation.NukeWpfAndPackageExample.WpfExample";

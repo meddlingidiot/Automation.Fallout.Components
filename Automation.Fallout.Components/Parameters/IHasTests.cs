@@ -11,4 +11,10 @@ public interface IHasTests : IFalloutBuild
     bool BreakBuildOnWarnings => TryGetValue<bool?>(() => BreakBuildOnWarnings) ?? true;
 
     [Parameter] int MinCoverageThreshold => TryGetValue<int?>(() => MinCoverageThreshold) ?? 0;
+
+    [Parameter("Upload coverage report to Codecov - Default is 'false'. Enable for public repositories.")]
+    bool UploadToCodecov => TryGetValue<bool?>(() => UploadToCodecov) ?? false;
+
+    [Parameter, Secret]
+    string? CodecovToken => TryGetValue(() => CodecovToken) ?? Environment.GetEnvironmentVariable("CODECOV_TOKEN");
 }

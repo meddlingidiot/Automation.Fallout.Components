@@ -7,10 +7,10 @@ namespace Automation.Fallout.Components.DefaultBuilds;
 public class PackageBuild : AzurePipelinesBuild, IShowVersion,
     IClean, ICompile, IRestore, IScanForSecrets, IRunUnitTests, IRunIntegrationTests, 
     IGenerateCoverageReport, ITest, IUpdateChangelog,
-    IPackage, ITagRelease, IAnnounceRelease
+    IPackageAzureDevOps, ITagRelease, IAnnounceRelease
 {
     public static int Main() => Execute<PackageBuild>(
-        x => ((IPackage)x).ReleasePackage);
+        x => ((IPackageAzureDevOps)x).ReleasePackage);
 
     int IHasTests.MinCoverageThreshold => 20;
     //bool IHasTests.BreakBuildOnWarnings => false;

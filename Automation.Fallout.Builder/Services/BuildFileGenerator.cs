@@ -22,14 +22,14 @@ public static class BuildFileGenerator
         sb.AppendLine();
 
         // Build class declaration - use generic Build with interfaces from the selected DefaultBuild
-        var interfaces = GetInterfacesForBuild(buildInfo.Name);
+        var interfaces = GetInterfacesForBuild(buildInfo.Name, config.Platform);
         var interfaceString = string.Join(", ", interfaces);
-        sb.AppendLine($"public class Build : AzurePipelinesBuild, {interfaceString}");
+        sb.AppendLine($"public class Build : {GetBaseClass(config.Platform)}, {interfaceString}");
         sb.AppendLine("{");
         sb.AppendLine();
 
         // Generate Main method
-        var targets = GenerateTargets(buildInfo);
+        var targets = GenerateTargets(buildInfo, config.Platform);
         if (targets.Count == 1)
         {
             sb.AppendLine($"    public static int Main() => Execute<Build>(");
@@ -79,7 +79,45 @@ public static class BuildFileGenerator
         return sb.ToString();
     }
 
-    private static List<string> GetInterfacesForBuild(string buildName)
+    /// <summary>
+    /// The build base class supplying platform-specific CI helpers.
+    /// </summary>
+    private static string GetBaseClass(BuildPlatform platform) => platform switch
+    {
+        BuildPlatform.GitHubActions => "GitHubActionsBuild",
+        _ => "AzurePipelinesBuild"
+    };
+
+    /// <summary>
+    /// The packaging interface for the platform. Packaging is split per platform because the push
+    /// destination differs - see IPackageGitHub / IPackageAzureDevOps.
+    /// </summary>
+    private static string GetPackageInterface(BuildPlatform platform) => platform switch
+    {
+        BuildPlatform.GitHubActions => "IPackageGitHub",
+        _ => "IPackageAzureDevOps"
+    };
+
+    private static List<string> GetInterfacesForBuild(string buildName, BuildPlatform platform)
+    {
+        var interfaces = GetInterfacesForBuildCore(buildName);
+
+        // The generic "IPackage" placeholder only names the packaging step; swap in the concrete
+        // platform interface that actually carries the ReleasePackage target.
+        for (var i = 0; i < interfaces.Count; i++)
+        {
+            if (interfaces[i] == "IPackage")
+                interfaces[i] = GetPackageInterface(platform);
+        }
+
+        // GitHub builds can additionally create a GitHub release from the pushed tag.
+        if (platform == BuildPlatform.GitHubActions && interfaces.Contains("ITagRelease"))
+            interfaces.Add("ICreateGitHubRelease");
+
+        return interfaces;
+    }
+
+    private static List<string> GetInterfacesForBuildCore(string buildName)
     {
         return buildName switch
         {
@@ -114,9 +152,10 @@ public static class BuildFileGenerator
         };
     }
 
-    private static List<string> GenerateTargets(DefaultBuildInfo buildInfo)
+    private static List<string> GenerateTargets(DefaultBuildInfo buildInfo, BuildPlatform platform)
     {
         var targets = new List<string>();
+        var package = GetPackageInterface(platform);
 
         switch (buildInfo.Name)
         {
@@ -127,13 +166,13 @@ public static class BuildFileGenerator
                 targets.Add("x => ((ITest)x).Test");
                 break;
             case "PackageBuild":
-                targets.Add("x => ((IPackage)x).ReleasePackage");
+                targets.Add($"x => (({package})x).ReleasePackage");
                 break;
             case "VelopackBuild":
                 targets.Add("y => ((IVelopack)y).ReleaseVelopack");
                 break;
             case "PackageAndVelopackBuild":
-                targets.Add("x => ((IPackage)x).ReleasePackage");
+                targets.Add($"x => (({package})x).ReleasePackage");
                 targets.Add("y => ((IVelopack)y).ReleaseVelopack");
                 break;
         }

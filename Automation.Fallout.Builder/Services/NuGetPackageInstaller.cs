@@ -99,7 +99,7 @@ public static class NuGetPackageInstaller
     /// </summary>
     public static async Task<IReadOnlyDictionary<string, string>> ListGlobalToolsAsync()
     {
-        var (succeeded, output) = await RunDotNetCommandCaptureAsync("tool list -g");
+        var (succeeded, output, _) = await RunDotNetCommandCaptureAsync("tool list -g");
 
         return succeeded
             ? ParseGlobalToolList(output)
@@ -473,31 +473,56 @@ public static class NuGetPackageInstaller
     /// Reads the root config files (nuget.config, GitVersion.yml, azure-pipelines.yml) that ship
     /// embedded in this tool.
     /// </summary>
-    public static IReadOnlyList<DefaultRootItem> GetDefaultRootItems()
+    /// <summary>
+    /// Folder under DefaultRootItems holding the items every platform gets.
+    /// </summary>
+    private const string CommonRootItemFolder = "Common";
+
+    /// <summary>
+    /// Items that do not belong at the repository root. The embedded resource name cannot carry a
+    /// directory (MSBuild flattens the path into dots), so the destination is mapped explicitly.
+    /// </summary>
+    private static readonly Dictionary<string, string> RootItemDestinations = new()
+    {
+        ["build.yml"] = Path.Combine(".github", "workflows", "build.yml")
+    };
+
+    /// <summary>
+    /// Where a root item belongs relative to the repository root. Most sit at the root; the GitHub
+    /// workflow has to land under .github/workflows to be picked up.
+    /// </summary>
+    public static string ResolveRootItemDestination(string fileName) =>
+        RootItemDestinations.TryGetValue(fileName, out var mapped) ? mapped : fileName;
+
+    /// <summary>
+    /// Root items that are never overwritten once the repository has its own copy. nuget.config is
+    /// the only one: it carries the feeds and credentials the repository restores from, and the
+    /// defaults embedded here point somewhere else entirely.
+    /// </summary>
+    public static bool IsProtectedRootItem(string fileName) =>
+        string.Equals(fileName, "nuget.config", StringComparison.OrdinalIgnoreCase);
+
+    public static IReadOnlyList<DefaultRootItem> GetDefaultRootItems(BuildPlatform platform)
     {
         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
         var items = new List<DefaultRootItem>();
+        var wanted = new[] { CommonRootItemFolder, platform.ToString() };
 
         foreach (var resourceName in assembly.GetManifestResourceNames().Where(name => name.Contains("DefaultRootItems")))
         {
-            // Format: Automation.Fallout.Builder.DefaultRootItems.filename.ext
+            // Format: Automation.Fallout.Builder.DefaultRootItems.<Folder>.filename.ext
+            // MSBuild turns the directory separator into a dot, so the part right after
+            // "DefaultRootItems" is the platform folder and the rest is the file name.
             var parts = resourceName.Split('.');
-            var fileNameParts = new List<string>();
+            var index = Array.IndexOf(parts, "DefaultRootItems");
+            if (index < 0 || index + 2 >= parts.Length)
+                continue;
 
-            // Start from "DefaultRootItems" onwards
-            bool foundDefaultRootItems = false;
-            foreach (var part in parts)
-            {
-                if (part == "DefaultRootItems")
-                {
-                    foundDefaultRootItems = true;
-                    continue;
-                }
-                if (foundDefaultRootItems)
-                {
-                    fileNameParts.Add(part);
-                }
-            }
+            var folder = parts[index + 1];
+            if (!wanted.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            var fileName = string.Join(".", parts.Skip(index + 2));
 
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)
@@ -511,7 +536,7 @@ public static class NuGetPackageInstaller
 
             items.Add(new DefaultRootItem
             {
-                FileName = string.Join(".", fileNameParts),
+                FileName = fileName,
                 Content = buffer.ToArray()
             });
         }
@@ -519,13 +544,13 @@ public static class NuGetPackageInstaller
         return items;
     }
 
-    public static async Task<bool> CopyDefaultRootItemsAsync(string workingDirectory)
+    public static async Task<bool> CopyDefaultRootItemsAsync(string workingDirectory, BuildPlatform platform)
     {
-        AnsiConsole.MarkupLine("[yellow]Copying default root items from embedded resources...[/]");
+        AnsiConsole.MarkupLine($"[yellow]Copying default root items for {platform} from embedded resources...[/]");
 
         try
         {
-            var items = GetDefaultRootItems();
+            var items = GetDefaultRootItems(platform);
 
             if (items.Count == 0)
             {
@@ -535,10 +560,23 @@ public static class NuGetPackageInstaller
 
             foreach (var item in items)
             {
-                var destFile = Path.Combine(workingDirectory, item.FileName);
+                var relativePath = ResolveRootItemDestination(item.FileName);
+
+                var destFile = Path.Combine(workingDirectory, relativePath);
+
+                // An existing nuget.config carries the repository's own feeds and credentials, so it
+                // is never overwritten - replacing it would silently cut the repository off from its
+                // packages.
+                if (IsProtectedRootItem(item.FileName) && File.Exists(destFile))
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Kept existing {relativePath.EscapeMarkup()}[/]");
+                    continue;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
                 await File.WriteAllBytesAsync(destFile, item.Content);
 
-                AnsiConsole.MarkupLine($"[green]Copied {item.FileName.EscapeMarkup()}[/]");
+                AnsiConsole.MarkupLine($"[green]Copied {relativePath.EscapeMarkup()}[/]");
             }
 
             AnsiConsole.MarkupLine("[green]All default root items copied successfully[/]");
@@ -559,7 +597,7 @@ public static class NuGetPackageInstaller
     /// <summary>
     /// Runs a dotnet command and returns its stdout instead of echoing it to the console.
     /// </summary>
-    internal static async Task<(bool Succeeded, string Output)> RunDotNetCommandCaptureAsync(
+    internal static async Task<(bool Succeeded, string Output, string Error)> RunDotNetCommandCaptureAsync(
         string arguments, string? workingDirectory = null)
     {
         try
@@ -585,12 +623,12 @@ public static class NuGetPackageInstaller
 
             await Task.WhenAll(outputTask, errorTask, process.WaitForExitAsync());
 
-            return (process.ExitCode == 0, await outputTask);
+            return (process.ExitCode == 0, await outputTask, await errorTask);
         }
         catch (Exception ex)
         {
             AnsiConsole.MarkupLine($"[red]Error running command: {ex.Message.EscapeMarkup()}[/]");
-            return (false, string.Empty);
+            return (false, string.Empty, ex.Message);
         }
     }
 

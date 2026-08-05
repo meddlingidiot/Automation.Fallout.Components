@@ -376,3 +376,9 @@ nul
 
 # Rider DotSettings
 *.DotSettings
+# Fallout Build
+.fallout/build.schema.json
+.fallout/temp/
+.tmp/
+artifacts/
+

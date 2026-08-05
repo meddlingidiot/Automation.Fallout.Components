@@ -9,7 +9,7 @@ public static class SetupCommand
     public static async Task<int> ExecuteAsync()
     {
         AnsiConsole.Write(
-            new FigletText("AFTR Fallout Setup")
+            new FigletText("Fallout Setup")
                 .Color(Color.Blue));
 
         AnsiConsole.MarkupLine("[bold]Welcome to Automation Fallout Builder Setup![/]");
@@ -67,9 +67,9 @@ public static class SetupCommand
         // Step 7: Get user configuration
         var config = await PromptForConfigurationAsync(workingDirectory);
 
-        // Step 8: Copy default root items. The nuget.config among them carries the AFTR feeds, so it
-        // has to be in place before any package version is looked up.
-        await NuGetPackageInstaller.CopyDefaultRootItemsAsync(workingDirectory);
+        // Step 8: Copy default root items for the chosen platform. The nuget.config among them
+        // carries the package feeds, so it has to be in place before any version is looked up.
+        await NuGetPackageInstaller.CopyDefaultRootItemsAsync(workingDirectory, config.Platform);
 
         // Step 9: Install required packages
         var packagesInstalled = await InstallRequiredPackagesAsync(buildCsproj, workingDirectory);
@@ -107,6 +107,21 @@ public static class SetupCommand
     private static async Task<BuildConfiguration> PromptForConfigurationAsync(string workingDirectory)
     {
         var config = new BuildConfiguration();
+
+        // Select CI platform first - it decides the build base class, the packaging interface
+        // and which root items land in the repository.
+        var platformChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[yellow]Which CI platform is this project built on?[/]")
+                .AddChoices(
+                    "Azure DevOps - Azure Pipelines, packages pushed to Azure Artifacts feeds",
+                    "GitHub Actions - GitHub workflow, packages pushed to GitHub Packages"));
+
+        config.Platform = platformChoice.StartsWith("GitHub")
+            ? BuildPlatform.GitHubActions
+            : BuildPlatform.AzureDevOps;
+
+        AnsiConsole.MarkupLine($"\n[green]Platform: {config.Platform}[/]\n");
 
         // Select build type
         var builds = DefaultBuildDiscovery.GetAvailableBuilds();

@@ -5,7 +5,9 @@ namespace Automation.Fallout.Components.Parameters;
 public interface IHasVelopack: IFalloutBuild
 {
     [Parameter] string VelopackProjectName => TryGetValue(() => VelopackProjectName);
-    [Parameter] string VelopackIconPath => TryGetValue(() => VelopackIconPath) ?? 
+    [Parameter] string VelopackPackTitle => TryGetValue(() => VelopackPackTitle) ??
+                                            "";
+    [Parameter] string VelopackIconPath => TryGetValue(() => VelopackIconPath) ??
                                            "";
     [Parameter] string VelopackChannel => TryGetValue(() => VelopackChannel) ?? 
                                           "win";
@@ -16,8 +18,14 @@ public interface IHasVelopack: IFalloutBuild
     [Parameter] string AzureBlobEndpoint => TryGetValue(() => AzureBlobEndpoint) ?? 
                                             "https://staftrinstallers.blob.core.windows.net";
     [Secret] string AzureBlobSasToken => TryGetValue(() => AzureBlobSasToken);
-    [Parameter] string AzureBlobSasTokenLocal => TryGetValue(() => AzureBlobSasTokenLocal) ?? 
-                                                 "sp=racwdl&st=2025-11-15T07:03:42Z&se=2125-11-15T15:18:42Z&spr=https&sv=2024-11-04&sr=c&sig=obovzU6WgCnQAMioHdJkG2Pxpq8UP2tqb7CakPAfCU8%3D";
+
+    // Supply the token with --azure-blob-sas-token-local or the AZURE_BLOB_SAS_TOKEN_LOCAL
+    // environment variable. There is deliberately no default: a SAS token is a live credential and
+    // does not belong in source. When it is missing the Velopack targets log a warning and skip the
+    // download/upload rather than failing the build.
+    [Parameter] string AzureBlobSasTokenLocal => TryGetValue(() => AzureBlobSasTokenLocal) ??
+                                                 Environment.GetEnvironmentVariable("AZURE_BLOB_SAS_TOKEN_LOCAL") ??
+                                                 "";
     [Parameter] string AzureBlobTimeout => TryGetValue(() => AzureBlobTimeout) ?? 
                                            "30";
     [Parameter] int KeepMaxReleases => TryGetValue<int?>(() => KeepMaxReleases) ?? 3;

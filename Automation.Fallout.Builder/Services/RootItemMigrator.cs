@@ -112,11 +112,22 @@ public static class RootItemMigrator
         workspace.DeleteDirectory(legacyDirectory, "Removed the legacy .nuke directory");
     }
 
-    public static void CopyDefaultRootItems(MigrationWorkspace workspace)
+    public static void CopyDefaultRootItems(MigrationWorkspace workspace, BuildPlatform platform)
     {
-        foreach (var item in NuGetPackageInstaller.GetDefaultRootItems())
+        foreach (var item in NuGetPackageInstaller.GetDefaultRootItems(platform))
         {
-            workspace.WriteBytes(workspace.Resolve(item.FileName), item.Content, "Refreshed from the Fallout defaults");
+            // build.yml belongs under .github/workflows, not at the repository root.
+            var target = workspace.Resolve(NuGetPackageInstaller.ResolveRootItemDestination(item.FileName));
+
+            // An existing nuget.config carries the repository's own feeds and credentials, so it is
+            // never overwritten - replacing it would silently cut the repository off from its packages.
+            if (NuGetPackageInstaller.IsProtectedRootItem(item.FileName) && File.Exists(target))
+            {
+                workspace.Report.Skip(workspace.Relative(target), "Left in place (already exists)");
+                continue;
+            }
+
+            workspace.WriteBytes(target, item.Content, "Refreshed from the Fallout defaults");
         }
     }
 }

@@ -41,8 +41,16 @@ public static class MigrateCommand
         var report = new MigrationReport();
         var workspace = new MigrationWorkspace(workingDirectory, options, report);
 
-        MigrateBuildProject(buildProject, workspace, report, options);
-        MigrateBuildSources(buildDirectory, workspace, report);
+        // Resolved up front: the platform decides which packaging interface the build sources are
+        // retargeted at, not just which root items get copied.
+        var platform = ResolvePlatform(workingDirectory, options);
+
+        // Asked before anything is written: the versions this tool ships with come off the Azure
+        // DevOps feed, so they are a last resort rather than the answer.
+        var versions = await MigrationPackageVersionResolver.ResolveAsync(workingDirectory, buildProject, options);
+
+        MigrateBuildProject(buildProject, versions, workspace, report);
+        MigrateBuildSources(buildDirectory, platform, workspace, report);
         MigrateToolManifest(workspace, report, options);
         RootItemMigrator.MigrateScripts(workspace, report);
         RootItemMigrator.MigrateConfigDirectory(workspace);
@@ -53,9 +61,10 @@ public static class MigrateCommand
         }
         else
         {
-            RootItemMigrator.CopyDefaultRootItems(workspace);
+            RootItemMigrator.CopyDefaultRootItems(workspace, platform);
         }
 
+        WarnIfGitHubFeedIsMissing(workingDirectory, platform, workspace, report);
         MigrateGitIgnore(workspace, report);
 
         if (options.RefreshPackages)
@@ -68,8 +77,41 @@ public static class MigrateCommand
         return 0;
     }
 
-    private static void MigrateBuildProject(string buildProject, MigrationWorkspace workspace, MigrationReport report,
-        MigrationOptions options)
+    /// <summary>
+    /// An explicit --platform always wins. Otherwise the platform comes from the feeds in the
+    /// repository's nuget.config: a GitHub Packages feed means GitHub, an Azure Artifacts feed means
+    /// Azure DevOps. Anything inconclusive falls back to Azure DevOps, which is where the
+    /// Nuke-to-Fallout migration originated.
+    /// </summary>
+    private static BuildPlatform ResolvePlatform(string repositoryRoot, MigrationOptions options)
+    {
+        if (options.Platform.HasValue)
+        {
+            AnsiConsole.MarkupLine($"[grey]Platform: {options.Platform.Value} (from --platform)[/]");
+            return options.Platform.Value;
+        }
+
+        var detected = PlatformDetector.DetectFromRepository(repositoryRoot, out var nugetConfigPath);
+
+        if (detected.HasValue)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Platform: {detected.Value} (detected from {Path.GetFileName(nugetConfigPath).EscapeMarkup()})[/]");
+            return detected.Value;
+        }
+
+        var reason = nugetConfigPath == null
+            ? "no nuget.config found"
+            : "no recognisable feed in nuget.config";
+
+        AnsiConsole.MarkupLine($"[yellow]Platform: {BuildPlatform.AzureDevOps} (default - {reason})[/]");
+        AnsiConsole.MarkupLine("[grey]Pass --platform to choose explicitly.[/]");
+
+        return BuildPlatform.AzureDevOps;
+    }
+
+    private static void MigrateBuildProject(string buildProject, MigrationPackageVersions versions,
+        MigrationWorkspace workspace, MigrationReport report)
     {
         var original = workspace.ReadText(buildProject);
         if (original == null)
@@ -77,7 +119,7 @@ public static class MigrateCommand
 
         try
         {
-            var result = BuildProjectMigrator.Migrate(original, options);
+            var result = BuildProjectMigrator.Migrate(original, versions);
 
             if (result.Notes.Count == 0)
             {
@@ -93,7 +135,8 @@ public static class MigrateCommand
         }
     }
 
-    private static void MigrateBuildSources(string buildDirectory, MigrationWorkspace workspace, MigrationReport report)
+    private static void MigrateBuildSources(string buildDirectory, BuildPlatform platform, MigrationWorkspace workspace,
+        MigrationReport report)
     {
         var sources = Directory.GetFiles(buildDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(file => !IsGenerated(buildDirectory, file));
@@ -104,10 +147,29 @@ public static class MigrateCommand
             if (original == null)
                 continue;
 
+            var details = new List<string>();
+
             var migrated = NamespaceMigrator.Rewrite(original);
             if (!string.Equals(original, migrated, StringComparison.Ordinal))
             {
-                workspace.WriteText(source, migrated, "Rewrote Nuke namespaces and types to Fallout");
+                details.Add("Rewrote Nuke namespaces and types to Fallout");
+            }
+
+            migrated = PackageInterfaceMigrator.Rewrite(migrated, platform, out var packageNotes);
+            details.AddRange(packageNotes);
+
+            if (details.Count > 0)
+            {
+                workspace.WriteText(source, migrated, string.Join("; ", details));
+            }
+
+            // The Nuke IPackage pushed to GitHub Packages whatever the platform, so retargeting an
+            // Azure DevOps build changes where its packages land. That is the intended destination
+            // for the platform, but it is not something to change quietly.
+            if (packageNotes.Count > 0 && platform == BuildPlatform.AzureDevOps)
+            {
+                report.Warn(workspace.Relative(source),
+                    "ReleasePackage now pushes to Azure DevOps Artifacts instead of GitHub Packages. Re-run with --platform GitHubActions if that is wrong");
             }
 
             foreach (var literal in NamespaceMigrator.FindUnescapedPathLiterals(migrated))
@@ -145,6 +207,28 @@ public static class MigrateCommand
         {
             report.Warn(workspace.Relative(manifestPath), $"Could not be migrated: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// An existing nuget.config is never replaced - it carries the repository's own feeds and
+    /// credentials - so a GitHub repository that predates the GitHub Packages feed being added to the
+    /// default keeps a config that cannot restore Automation.Fallout.Components.
+    /// </summary>
+    private static void WarnIfGitHubFeedIsMissing(string repositoryRoot, BuildPlatform platform,
+        MigrationWorkspace workspace, MigrationReport report)
+    {
+        if (platform != BuildPlatform.GitHubActions)
+            return;
+
+        var nugetConfig = PlatformDetector.FindNuGetConfig(repositoryRoot);
+        if (nugetConfig == null || !File.Exists(nugetConfig))
+            return;
+
+        if (PlatformDetector.NamesGitHubPackagesFeed(File.ReadAllText(nugetConfig)))
+            return;
+
+        report.Warn(workspace.Relative(nugetConfig),
+            "Names no GitHub Packages feed, so Automation.Fallout.Components cannot be restored. Add https://nuget.pkg.github.com/<owner>/index.json with %GITHUB_TOKEN% credentials");
     }
 
     private static void MigrateGitIgnore(MigrationWorkspace workspace, MigrationReport report)

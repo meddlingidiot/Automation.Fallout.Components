@@ -15,6 +15,13 @@
         "dotnet-gitreleasemanager"
       ],
       "rollForward": false
+    },
+    "automation.fallout.builder": {
+      "version": "0.0.5",
+      "commands": [
+        "aftrfallout"
+      ],
+      "rollForward": false
     }
   }
 }

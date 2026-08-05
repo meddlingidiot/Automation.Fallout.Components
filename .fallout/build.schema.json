@@ -29,6 +29,7 @@
         "Clean",
         "Compile",
         "CoverageReport",
+        "CreateGitHubRelease",
         "IntegrationTests",
         "Package",
         "PreVelopack",
@@ -136,14 +137,6 @@
         "AzureBlobTimeout": {
           "type": "string"
         },
-        "AzurePipelinesImage": {
-          "type": "string",
-          "description": "Azure Pipelines image - only used if not using self-hosted pool"
-        },
-        "AzurePipelinesPool": {
-          "type": "string",
-          "description": "Azure Pipelines pool name"
-        },
         "BreakBuildOnSecretLeaks": {
           "type": "boolean",
           "description": "Break build on secret leaks - Default is 'true'"
@@ -151,6 +144,10 @@
         "BreakBuildOnWarnings": {
           "type": "boolean",
           "description": "Break build on warnings - Default is 'true'"
+        },
+        "CodecovToken": {
+          "type": "string",
+          "default": "Secrets must be entered via 'nuke :secrets [profile]'"
         },
         "CodeSigningCertificateName": {
           "type": "string"
@@ -175,6 +172,14 @@
           "type": "boolean",
           "description": "Force tag for local builds - Default is 'false'"
         },
+        "GitHubOwner": {
+          "type": "string",
+          "description": "GitHub organization or user name"
+        },
+        "GitHubToken": {
+          "type": "string",
+          "description": "GitHub Personal Access Token for package publishing"
+        },
         "GitleaksVersion": {
           "type": "string",
           "description": "Version of Gitleaks to use"
@@ -182,14 +187,6 @@
         "KeepMaxReleases": {
           "type": "integer",
           "format": "int32"
-        },
-        "PrereleaseFeedId": {
-          "type": "string",
-          "description": "Azure DevOps feed ID for prerelease packages"
-        },
-        "ProductionFeedId": {
-          "type": "string",
-          "description": "Azure DevOps feed ID for production packages"
         },
         "Solution": {
           "type": "string",
@@ -204,6 +201,10 @@
         "SslComUsername": {
           "type": "string"
         },
+        "UploadToCodecov": {
+          "type": "boolean",
+          "description": "Upload coverage report to Codecov - Default is 'false'. Enable for public repositories"
+        },
         "VelopackBlobContainer": {
           "type": "string"
         },
@@ -211,6 +212,9 @@
           "type": "string"
         },
         "VelopackIconPath": {
+          "type": "string"
+        },
+        "VelopackPackTitle": {
           "type": "string"
         },
         "VelopackProjectName": {

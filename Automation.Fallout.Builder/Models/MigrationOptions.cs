@@ -17,6 +17,13 @@ public class MigrationOptions
     /// <summary>Leave azure-pipelines.yml, GitVersion.yml and nuget.config alone.</summary>
     public bool KeepRootItems { get; set; }
 
+    /// <summary>
+    /// CI platform whose root items get refreshed. Null means detect it from the feeds in the
+    /// repository's nuget.config, falling back to Azure DevOps when nothing conclusive is found -
+    /// that is where the Nuke-to-Fallout migration originated.
+    /// </summary>
+    public BuildPlatform? Platform { get; set; }
+
     /// <summary>After repairing the project, run 'dotnet add package' to move to the newest feed versions.</summary>
     public bool RefreshPackages { get; set; }
 
