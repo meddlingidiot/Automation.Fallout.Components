@@ -9,11 +9,11 @@ using Automation.Fallout.Components.Parameters;
 /// Build configuration for PackageBuild
 /// </summary>
 
-public class Build : GitHubActionsBuild, IShowVersion, IClean, ICompile, IRestore, IScanForSecrets, IRunUnitTests, IRunIntegrationTests, IGenerateCoverageReport, ITest, IUpdateChangelog, IPackageGitHub, ITagRelease, IAnnounceRelease, ICreateGitHubRelease
+public class Build :AzurePipelinesBuild, IShowVersion, IClean, ICompile, IRestore, IScanForSecrets, IRunUnitTests, IRunIntegrationTests, IGenerateCoverageReport, ITest, IUpdateChangelog, IPackageAzureDevOps, ITagRelease, IAnnounceRelease
 {
 
     public static int Main() => Execute<Build>(
-        x => ((IPackageGitHub)x).ReleasePackage);
+        x => ((IPackageAzureDevOps)x).ReleasePackage);
 
     int IHasTests.MinCoverageThreshold => 35;
     bool ITestExecution.UseMicrosoftTestingPlatform => true;
