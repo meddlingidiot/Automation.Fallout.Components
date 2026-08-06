@@ -1,70 +1,39 @@
 using Automation.Fallout.Builder.Models;
 using Automation.Fallout.Builder.Services;
+using Automation.Fallout.Builder.Ui;
 using Spectre.Console;
 
 namespace Automation.Fallout.Builder.Commands;
 
 public static class SetupCommand
 {
-    private static string? FindRepositoryRoot()
-    {
-        var currentDir = Directory.GetCurrentDirectory();
-
-        // Walk up the directory tree looking for .git or .sln
-        while (currentDir != null)
-        {
-            // Check for .git directory
-            if (Directory.Exists(Path.Combine(currentDir, ".git")))
-            {
-                return currentDir;
-            }
-
-            // Check for .sln file
-            if (Directory.GetFiles(currentDir, "*.sln").Length > 0)
-            {
-                return currentDir;
-            }
-
-            // Move up one directory
-            var parent = Directory.GetParent(currentDir);
-            if (parent == null)
-                break;
-
-            currentDir = parent.FullName;
-        }
-
-        return null;
-    }
-
     public static async Task<int> ExecuteAsync()
     {
-        AnsiConsole.Write(
-            new FigletText("AFTR Fallout Setup")
-                .Color(Color.Blue));
+        FalloutBanner.Render("Fallout Setup", Color.Blue);
 
         AnsiConsole.MarkupLine("[bold]Welcome to Automation Fallout Builder Setup![/]");
         AnsiConsole.MarkupLine("This tool will help you configure your Fallout build pipeline.\n");
 
-        var workingDirectory = FindRepositoryRoot();
+        var workingDirectory = RepositoryLocator.FindRepositoryRoot();
         if (workingDirectory == null)
         {
-            AnsiConsole.MarkupLine("[red]Could not find repository root. Please run this command from within a git repository or directory containing a .sln file.[/]");
+            AnsiConsole.MarkupLine("[red]Could not find repository root. Please run this command from within a git repository or directory containing a .sln or .slnx file.[/]");
             return 1;
         }
 
         AnsiConsole.MarkupLine($"[grey]Repository Root: {workingDirectory.EscapeMarkup()}[/]\n");
 
-        // Step 1: Ensure Nuke is installed
+        // Step 1: Ensure Fallout is installed
         if (!await NuGetPackageInstaller.InstallFalloutGlobalToolAsync())
         {
             AnsiConsole.MarkupLine("[red]Failed to install Fallout. Please install it manually and try again.[/]");
             return 1;
         }
 
-        // Step 2: Update Nuke global tool
+        // Step 2: Update Fallout global tool
         await NuGetPackageInstaller.UpdateFalloutGlobalToolAsync();
 
-        // Step 3: Run Nuke setup if not already done
+        // Step 3: Run Fallout setup if not already done
         var buildDir = Path.Combine(workingDirectory, "build");
         if (!Directory.Exists(buildDir))
         {
@@ -91,24 +60,25 @@ public static class SetupCommand
         await NuGetPackageInstaller.UpgradeProjectTargetFrameworkAsync(buildCsproj);
 
         // Step 6: Add PackageDownloads
-        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "GitVersion.Tool", "6.5.1");
-        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "ReportGenerator", "5.5.1");
+        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "GitVersion.Tool", "6.8.2");
+        await NuGetPackageInstaller.AddPackageDownloadAsync(buildCsproj, "ReportGenerator", "5.5.11");
 
         // Step 7: Get user configuration
         var config = await PromptForConfigurationAsync(workingDirectory);
 
-        // Step 8: Install required packages
-        await InstallRequiredPackagesAsync(buildCsproj, config);
+        // Step 8: Copy default root items for the chosen platform. The nuget.config among them
+        // carries the package feeds, so it has to be in place before any version is looked up.
+        await NuGetPackageInstaller.CopyDefaultRootItemsAsync(workingDirectory, config.Platform);
 
-        // Step 9: Install local tools
+        // Step 9: Install required packages
+        var packagesInstalled = await InstallRequiredPackagesAsync(buildCsproj, workingDirectory);
+
+        // Step 10: Install local tools
         await InstallLocalToolsAsync(workingDirectory);
 
-        // Step 10: Delete Configuration.cs if it exists
+        // Step 11: Delete Configuration.cs if it exists
         var configurationCs = Path.Combine(buildDir, "Configuration.cs");
         await NuGetPackageInstaller.DeleteFileIfExistsAsync(configurationCs);
-
-        // Step 11: Copy default root items
-        await NuGetPackageInstaller.CopyDefaultRootItemsAsync(workingDirectory);
 
         // Step 12: Update .gitignore
         await NuGetPackageInstaller.UpdateGitIgnoreAsync(workingDirectory);
@@ -117,6 +87,14 @@ public static class SetupCommand
         await GenerateBuildFileAsync(buildDir, config);
 
         AnsiConsole.MarkupLine("\n[green bold]Setup completed successfully![/]");
+
+        if (!packagesInstalled)
+        {
+            AnsiConsole.MarkupLine(
+                "\n[yellow]Not every package could be added to build/_build.csproj - see the errors above. " +
+                "The build will not compile until they are referenced.[/]");
+        }
+
         AnsiConsole.MarkupLine("\n[yellow]Next steps:[/]");
         AnsiConsole.MarkupLine("  1. Review the generated build/Build.cs file");
         AnsiConsole.MarkupLine("  2. Run [cyan]nuke --help[/] to see available targets");
@@ -128,6 +106,21 @@ public static class SetupCommand
     private static async Task<BuildConfiguration> PromptForConfigurationAsync(string workingDirectory)
     {
         var config = new BuildConfiguration();
+
+        // Select CI platform first - it decides the build base class, the packaging interface
+        // and which root items land in the repository.
+        var platformChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[yellow]Which CI platform is this project built on?[/]")
+                .AddChoices(
+                    "Azure DevOps - Azure Pipelines, packages pushed to Azure Artifacts feeds",
+                    "GitHub Actions - GitHub workflow, packages pushed to GitHub Packages"));
+
+        config.Platform = platformChoice.StartsWith("GitHub")
+            ? BuildPlatform.GitHubActions
+            : BuildPlatform.AzureDevOps;
+
+        AnsiConsole.MarkupLine($"\n[green]Platform: {config.Platform}[/]\n");
 
         // Select build type
         var builds = DefaultBuildDiscovery.GetAvailableBuilds();
@@ -224,30 +217,40 @@ public static class SetupCommand
         return config;
     }
 
-    private static async Task InstallRequiredPackagesAsync(string buildCsproj, BuildConfiguration config)
+    /// <summary>
+    /// References the two packages a Fallout build needs. Returns false when either could not be
+    /// added, so the caller can say so rather than leave a project that will not compile.
+    /// </summary>
+    private static async Task<bool> InstallRequiredPackagesAsync(string buildCsproj, string workingDirectory)
     {
         AnsiConsole.MarkupLine("\n[yellow bold]Installing required NuGet packages...[/]\n");
 
-        // Core package (your components package)
-        await NuGetPackageInstaller.AddPackageToProjectAsync(
+        // The components package moves independently of the CLI, so setup takes its newest release.
+        var componentsAdded = await NuGetPackageInstaller.AddPackageToProjectAsync(
             buildCsproj,
-            "Automation.Fallout.Components");
+            "Automation.Fallout.Components",
+            repositoryRoot: workingDirectory,
+            fallbackVersion: MigrationDefaults.ComponentsVersion);
 
-        // GitVersion
-        await NuGetPackageInstaller.AddPackageToProjectAsync(
+        // Fallout.Common is pinned instead: it has to match the Fallout CLI this tool installs.
+        var falloutCommonAdded = await NuGetPackageInstaller.AddPackageToProjectAsync(
             buildCsproj,
-            "Fallout.Common");
+            "Fallout.Common",
+            MigrationDefaults.FalloutCommonVersion,
+            workingDirectory);
+
+        return componentsAdded && falloutCommonAdded;
     }
 
     private static async Task InstallLocalToolsAsync(string workingDirectory)
     {
         AnsiConsole.MarkupLine("\n[yellow bold]Installing local tools...[/]\n");
 
-        // Install GitVersion.Tool 6.5.1
+        // Install GitVersion.Tool 6.8.2
         await NuGetPackageInstaller.InstallToolLocallyAsync(
             workingDirectory,
             "GitVersion.Tool",
-            "6.5.1");
+            "6.8.2");
 
         // Install Gitleaks for secret scanning
         AnsiConsole.MarkupLine("[yellow]Note: Gitleaks should be installed separately from https://github.com/gitleaks/gitleaks[/]");

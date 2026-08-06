@@ -1,53 +1,133 @@
 ﻿using System.Diagnostics;
 using System.Xml.Linq;
+using Automation.Fallout.Builder.Models;
 using Spectre.Console;
 
 namespace Automation.Fallout.Builder.Services;
 
 public static class NuGetPackageInstaller
 {
-    public static async Task<bool> InstallFalloutGlobalToolAsync()
+    /// <summary>
+    /// Ensures the Fallout CLI is available as a global tool.
+    /// </summary>
+    /// <remarks>
+    /// Detection reads 'dotnet tool list -g' rather than running 'fallout --version'. Inside a
+    /// Fallout repository that probe restores and compiles the _build project before answering,
+    /// which takes minutes, so any timeout on it reports "not installed" and triggers a redundant
+    /// install that then collides on the 'fallout' shim.
+    /// </remarks>
+    public static async Task<bool> InstallFalloutGlobalToolAsync(string? version = null)
     {
-        AnsiConsole.MarkupLine("[yellow]Checking if Fallout global tool is installed...[/]");
+        version ??= MigrationDefaults.GlobalToolVersion;
 
-        var isInstalled = await IsFalloutInstalledAsync();
-        if (isInstalled)
+        AnsiConsole.MarkupLine("[yellow]Checking if the Fallout CLI is installed...[/]");
+
+        var installedTools = await ListGlobalToolsAsync();
+
+        if (installedTools.TryGetValue(MigrationDefaults.GlobalToolPackageId, out var installedVersion))
         {
-            AnsiConsole.MarkupLine("[green]Fallout is already installed[/]");
+            AnsiConsole.MarkupLine($"[green]Fallout CLI {installedVersion.EscapeMarkup()} is already installed[/]");
             return true;
         }
 
-        AnsiConsole.MarkupLine("[yellow]Installing Fallout global tool...[/]");
-        var success = await RunDotNetCommandAsync("dotnet tool install Fallout.GlobalTool -g");
+        // Fallout.GlobalTool was renamed to Fallout.Cli and unlisted, but it still owns the
+        // 'fallout' shim, so installing the replacement fails until it is removed.
+        if (installedTools.ContainsKey(SupersededGlobalToolPackageId))
+        {
+            AnsiConsole.MarkupLine($"[yellow]{SupersededGlobalToolPackageId} owns the 'fallout' command and has been superseded by {MigrationDefaults.GlobalToolPackageId}. Removing it...[/]");
+
+            if (!await RunDotNetCommandAsync($"tool uninstall {SupersededGlobalToolPackageId} --global"))
+            {
+                AnsiConsole.MarkupLine($"[red]Could not uninstall {SupersededGlobalToolPackageId}. Remove it manually and try again.[/]");
+                return false;
+            }
+        }
+
+        AnsiConsole.MarkupLine($"[yellow]Installing Fallout CLI {version.EscapeMarkup()}...[/]");
+
+        // The 11.x releases are unlisted on nuget.org, so an unversioned install cannot resolve them.
+        var success = await RunDotNetCommandAsync($"tool install {MigrationDefaults.GlobalToolPackageId} -g --version {version}");
 
         if (success)
         {
-            AnsiConsole.MarkupLine("[green]Fallout global tool installed successfully[/]");
+            AnsiConsole.MarkupLine("[green]Fallout CLI installed successfully[/]");
         }
         else
         {
-            AnsiConsole.MarkupLine("[red]Failed to install Fallout global tool[/]");
+            AnsiConsole.MarkupLine("[red]Failed to install the Fallout CLI[/]");
         }
 
         return success;
     }
 
-    public static async Task<bool> UpdateFalloutGlobalToolAsync()
+    /// <summary>
+    /// Moves an already installed Fallout CLI onto the requested version.
+    /// </summary>
+    public static async Task<bool> UpdateFalloutGlobalToolAsync(string? version = null)
     {
-        AnsiConsole.MarkupLine("[yellow]Updating Fallout global tool...[/]");
+        version ??= MigrationDefaults.GlobalToolVersion;
 
-        var success = await RunDotNetCommandAsync("tool update Fallout.GlobalTool --global");
+        var installedTools = await ListGlobalToolsAsync();
+        if (installedTools.TryGetValue(MigrationDefaults.GlobalToolPackageId, out var installedVersion)
+            && installedVersion == version)
+        {
+            return true;
+        }
+
+        AnsiConsole.MarkupLine($"[yellow]Updating the Fallout CLI to {version.EscapeMarkup()}...[/]");
+
+        var success = await RunDotNetCommandAsync(
+            $"tool update {MigrationDefaults.GlobalToolPackageId} --global --version {version}");
 
         if (success)
         {
-            AnsiConsole.MarkupLine("[green]Fallout global tool updated successfully[/]");
+            AnsiConsole.MarkupLine("[green]Fallout CLI updated successfully[/]");
         }
         else
         {
-            AnsiConsole.MarkupLine("[yellow]Fallout global tool update failed, but continuing...[/]");
+            AnsiConsole.MarkupLine("[yellow]Fallout CLI update failed, but continuing...[/]");
         }
 
         return success;
+    }
+
+    /// <summary>The package id that Fallout.Cli replaced. It still owns the 'fallout' shim.</summary>
+    private const string SupersededGlobalToolPackageId = "fallout.globaltool";
+
+    /// <summary>
+    /// Parses 'dotnet tool list -g' into a package id -> version map.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, string>> ListGlobalToolsAsync()
+    {
+        var (succeeded, output, _) = await RunDotNetCommandCaptureAsync("tool list -g");
+
+        return succeeded
+            ? ParseGlobalToolList(output)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Parses the table emitted by 'dotnet tool list' into a package id -> version map.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ParseGlobalToolList(string output)
+    {
+        var tools = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var columns = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            // Skip the header row and the ---- separator.
+            if (columns.Length < 2 || columns[0].StartsWith("---", StringComparison.Ordinal) ||
+                columns[0].Equals("Package", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            tools[columns[0]] = columns[1];
+        }
+
+        return tools;
     }
 
     public static async Task<bool> RunFalloutSetupAsync(string workingDirectory)
@@ -68,31 +148,111 @@ public static class NuGetPackageInstaller
         return success;
     }
 
-    public static async Task<bool> AddPackageToProjectAsync(string projectPath, string packageName, string? version = null)
+    /// <summary>
+    /// References a package from a project, putting the version wherever the repository keeps it.
+    /// </summary>
+    /// <remarks>
+    /// This edits the project XML rather than shelling out to 'dotnet add package' because the
+    /// version has to land in Directory.Packages.props when the repository manages versions
+    /// centrally, and because a repository being set up for the first time may not have restored
+    /// anything yet.
+    /// </remarks>
+    /// <param name="version">Pins an exact version. When null, the newest released version on the feeds is used.</param>
+    /// <param name="repositoryRoot">Where the feed lookup runs and where the search for Directory.Packages.props stops. Defaults to the project directory.</param>
+    /// <param name="fallbackVersion">Used when the feeds cannot be reached, so setup still leaves a buildable project.</param>
+    public static async Task<bool> AddPackageToProjectAsync(
+        string projectPath,
+        string packageName,
+        string? version = null,
+        string? repositoryRoot = null,
+        string? fallbackVersion = null)
     {
-        // Remove the package first if it exists
-        AnsiConsole.MarkupLine($"[yellow]Removing existing {packageName} package if present...[/]");
-        var removeCommand = $"remove \"{projectPath}\" package {packageName}";
-        await RunDotNetCommandAsync(removeCommand);
-
-        // Add the package (always use newest version unless specified)
-        var versionArg = version != null ? $" --version {version}" : "";
-        var command = $"add \"{projectPath}\" package {packageName}{versionArg}";
-
         AnsiConsole.MarkupLine($"[yellow]Adding package {packageName} to project...[/]");
 
-        var success = await RunDotNetCommandAsync(command);
-
-        if (success)
+        try
         {
+            var projectDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))!;
+            repositoryRoot ??= projectDirectory;
+
+            var projectXml = await File.ReadAllTextAsync(projectPath);
+
+            var resolvedVersion = await ResolvePackageVersionAsync(
+                packageName, version, repositoryRoot, projectXml, fallbackVersion);
+
+            if (resolvedVersion == null)
+            {
+                AnsiConsole.MarkupLine(
+                    $"[red]Could not determine a version for {packageName}. Add it to the project manually.[/]");
+                return false;
+            }
+
+            var propsFile = CentralPackageManagement.FindPropsFile(projectDirectory, repositoryRoot);
+            var centrallyManaged = propsFile != null &&
+                                   CentralPackageManagement.IsEnabled(await File.ReadAllTextAsync(propsFile));
+
+            if (centrallyManaged)
+            {
+                var props = CentralPackageManagement.UpsertPackageVersion(
+                    await File.ReadAllTextAsync(propsFile!), packageName, resolvedVersion);
+
+                if (props.Changed)
+                {
+                    await File.WriteAllTextAsync(propsFile!, props.Xml);
+                }
+
+                AnsiConsole.MarkupLine(
+                    $"[green]Pinned {packageName} {resolvedVersion} in {Path.GetFileName(propsFile)}[/]");
+            }
+
+            var project = CentralPackageManagement.UpsertPackageReference(
+                projectXml, packageName, centrallyManaged ? null : resolvedVersion);
+
+            if (project.Changed)
+            {
+                await File.WriteAllTextAsync(projectPath, project.Xml);
+            }
+
             AnsiConsole.MarkupLine($"[green]Package {packageName} added successfully[/]");
+            return true;
         }
-        else
+        catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]Failed to add package {packageName}[/]");
+            AnsiConsole.MarkupLine($"[red]Failed to add package {packageName}: {ex.Message.EscapeMarkup()}[/]");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// An explicit pin wins, then the newest released version on the feeds, then whatever the project
+    /// already pins, then the version this tool shipped with.
+    /// </summary>
+    private static async Task<string?> ResolvePackageVersionAsync(
+        string packageName,
+        string? requestedVersion,
+        string repositoryRoot,
+        string projectXml,
+        string? fallbackVersion)
+    {
+        if (requestedVersion != null)
+            return requestedVersion;
+
+        var latest = await NuGetVersionResolver.GetLatestStableVersionAsync(packageName, repositoryRoot);
+        if (latest != null)
+            return latest;
+
+        var existing = CentralPackageManagement.ReadPackageReferenceVersion(projectXml, packageName);
+        if (existing != null)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Keeping the version {packageName} is already pinned to ({existing.EscapeMarkup()})[/]");
+            return existing;
         }
 
-        return success;
+        if (fallbackVersion != null)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Falling back to {packageName} {fallbackVersion.EscapeMarkup()}[/]");
+        }
+
+        return fallbackVersion;
     }
 
     public static async Task<bool> InstallToolLocallyAsync(string workingDirectory, string toolName, string? version = null)
@@ -244,46 +404,15 @@ public static class NuGetPackageInstaller
                 content = await File.ReadAllTextAsync(gitignorePath);
             }
 
-            var needsFalloutSection = !content.Contains("# Fallout Build");
-            var needsRiderSection = !content.Contains("# JetBrains Rider");
-            var needsDotNetSection = !content.Contains("# Rider DotSettings");
+            var additions = BuildGitIgnoreAdditions(content);
 
-            if (!needsFalloutSection && !needsRiderSection && !needsDotNetSection)
+            if (additions.Length == 0)
             {
-                AnsiConsole.MarkupLine("[green].gitignore already contains Nuke and Rider entries[/]");
+                AnsiConsole.MarkupLine("[green].gitignore already contains Fallout and Rider entries[/]");
                 return;
             }
 
-            var additions = new System.Text.StringBuilder();
-
-            if (!content.EndsWith("\n") && content.Length > 0)
-            {
-                additions.AppendLine();
-            }
-
-            if (needsFalloutSection)
-            {
-                additions.AppendLine("# Fallout Build");
-                additions.AppendLine(".fallout/build.schema.json");
-                additions.AppendLine(".fallout/temp/");
-                additions.AppendLine(".tmp/");
-                additions.AppendLine("artifacts/");
-                additions.AppendLine();
-            }
-
-            if (needsRiderSection)
-            {
-                additions.AppendLine("# JetBrains Rider");
-                additions.AppendLine(".idea/");
-            }
-            if (needsDotNetSection)
-            {
-                additions.AppendLine();
-                additions.AppendLine("# Rider DotSettings");
-                additions.AppendLine("*.DotSettings");
-            }
-
-            await File.AppendAllTextAsync(gitignorePath, additions.ToString());
+            await File.AppendAllTextAsync(gitignorePath, additions);
 
             AnsiConsole.MarkupLine("[green]Updated .gitignore with Fallout and Rider entries[/]");
         }
@@ -293,63 +422,161 @@ public static class NuGetPackageInstaller
         }
     }
 
-    public static async Task<bool> CopyDefaultRootItemsAsync(string workingDirectory)
+    /// <summary>
+    /// Returns the text that needs appending to an existing .gitignore, or an empty string when the
+    /// Fallout and Rider sections are already present.
+    /// </summary>
+    public static string BuildGitIgnoreAdditions(string content)
     {
-        AnsiConsole.MarkupLine("[yellow]Copying default root items from embedded resources...[/]");
+        var needsFalloutSection = !content.Contains("# Fallout Build");
+        var needsRiderSection = !content.Contains("# JetBrains Rider");
+        var needsDotNetSection = !content.Contains("# Rider DotSettings");
+
+        if (!needsFalloutSection && !needsRiderSection && !needsDotNetSection)
+        {
+            return string.Empty;
+        }
+
+        var additions = new System.Text.StringBuilder();
+
+        if (!content.EndsWith("\n") && content.Length > 0)
+        {
+            additions.AppendLine();
+        }
+
+        if (needsFalloutSection)
+        {
+            additions.AppendLine("# Fallout Build");
+            additions.AppendLine(".fallout/build.schema.json");
+            additions.AppendLine(".fallout/temp/");
+            additions.AppendLine(".tmp/");
+            additions.AppendLine("artifacts/");
+            additions.AppendLine();
+        }
+
+        if (needsRiderSection)
+        {
+            additions.AppendLine("# JetBrains Rider");
+            additions.AppendLine(".idea/");
+        }
+        if (needsDotNetSection)
+        {
+            additions.AppendLine();
+            additions.AppendLine("# Rider DotSettings");
+            additions.AppendLine("*.DotSettings");
+        }
+
+        return additions.ToString();
+    }
+
+    /// <summary>
+    /// Reads the root config files (nuget.config, GitVersion.yml, azure-pipelines.yml) that ship
+    /// embedded in this tool.
+    /// </summary>
+    /// <summary>
+    /// Folder under DefaultRootItems holding the items every platform gets.
+    /// </summary>
+    private const string CommonRootItemFolder = "Common";
+
+    /// <summary>
+    /// Items that do not belong at the repository root. The embedded resource name cannot carry a
+    /// directory (MSBuild flattens the path into dots), so the destination is mapped explicitly.
+    /// </summary>
+    private static readonly Dictionary<string, string> RootItemDestinations = new()
+    {
+        ["build.yml"] = Path.Combine(".github", "workflows", "build.yml")
+    };
+
+    /// <summary>
+    /// Where a root item belongs relative to the repository root. Most sit at the root; the GitHub
+    /// workflow has to land under .github/workflows to be picked up.
+    /// </summary>
+    public static string ResolveRootItemDestination(string fileName) =>
+        RootItemDestinations.TryGetValue(fileName, out var mapped) ? mapped : fileName;
+
+    /// <summary>
+    /// Root items that are never overwritten once the repository has its own copy. nuget.config is
+    /// the only one: it carries the feeds and credentials the repository restores from, and the
+    /// defaults embedded here point somewhere else entirely.
+    /// </summary>
+    public static bool IsProtectedRootItem(string fileName) =>
+        string.Equals(fileName, "nuget.config", StringComparison.OrdinalIgnoreCase);
+
+    public static IReadOnlyList<DefaultRootItem> GetDefaultRootItems(BuildPlatform platform)
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        var items = new List<DefaultRootItem>();
+        var wanted = new[] { CommonRootItemFolder, platform.ToString() };
+
+        foreach (var resourceName in assembly.GetManifestResourceNames().Where(name => name.Contains("DefaultRootItems")))
+        {
+            // Format: Automation.Fallout.Builder.DefaultRootItems.<Folder>.filename.ext
+            // MSBuild turns the directory separator into a dot, so the part right after
+            // "DefaultRootItems" is the platform folder and the rest is the file name.
+            var parts = resourceName.Split('.');
+            var index = Array.IndexOf(parts, "DefaultRootItems");
+            if (index < 0 || index + 2 >= parts.Length)
+                continue;
+
+            var folder = parts[index + 1];
+            if (!wanted.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            var fileName = string.Join(".", parts.Skip(index + 2));
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                AnsiConsole.MarkupLine($"[red]Could not load resource {resourceName.EscapeMarkup()}[/]");
+                continue;
+            }
+
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+
+            items.Add(new DefaultRootItem
+            {
+                FileName = fileName,
+                Content = buffer.ToArray()
+            });
+        }
+
+        return items;
+    }
+
+    public static async Task<bool> CopyDefaultRootItemsAsync(string workingDirectory, BuildPlatform platform)
+    {
+        AnsiConsole.MarkupLine($"[yellow]Copying default root items for {platform} from embedded resources...[/]");
 
         try
         {
-            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-            var resourceNames = assembly.GetManifestResourceNames()
-                .Where(name => name.Contains("DefaultRootItems"))
-                .ToList();
+            var items = GetDefaultRootItems(platform);
 
-            if (resourceNames.Count == 0)
+            if (items.Count == 0)
             {
                 AnsiConsole.MarkupLine("[red]No DefaultRootItems embedded resources found[/]");
                 return false;
             }
 
-            foreach (var resourceName in resourceNames)
+            foreach (var item in items)
             {
-                // Extract filename from resource name
-                // Format: Automation.Fallout.Builder.DefaultRootItems.filename.ext
-                var parts = resourceName.Split('.');
-                var fileNameParts = new List<string>();
+                var relativePath = ResolveRootItemDestination(item.FileName);
 
-                // Start from "DefaultRootItems" onwards
-                bool foundDefaultRootItems = false;
-                foreach (var part in parts)
+                var destFile = Path.Combine(workingDirectory, relativePath);
+
+                // An existing nuget.config carries the repository's own feeds and credentials, so it
+                // is never overwritten - replacing it would silently cut the repository off from its
+                // packages.
+                if (IsProtectedRootItem(item.FileName) && File.Exists(destFile))
                 {
-                    if (part == "DefaultRootItems")
-                    {
-                        foundDefaultRootItems = true;
-                        continue;
-                    }
-                    if (foundDefaultRootItems)
-                    {
-                        fileNameParts.Add(part);
-                    }
+                    AnsiConsole.MarkupLine($"[yellow]Kept existing {relativePath.EscapeMarkup()}[/]");
+                    continue;
                 }
 
-                var fileName = string.Join(".", fileNameParts);
-                var destFile = Path.Combine(workingDirectory, fileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
+                await File.WriteAllBytesAsync(destFile, item.Content);
 
-                using (var stream = assembly.GetManifestResourceStream(resourceName))
-                {
-                    if (stream == null)
-                    {
-                        AnsiConsole.MarkupLine($"[red]Could not load resource {resourceName}[/]");
-                        continue;
-                    }
-
-                    using (var fileStream = File.Create(destFile))
-                    {
-                        await stream.CopyToAsync(fileStream);
-                    }
-                }
-
-                AnsiConsole.MarkupLine($"[green]Copied {fileName}[/]");
+                AnsiConsole.MarkupLine($"[green]Copied {relativePath.EscapeMarkup()}[/]");
             }
 
             AnsiConsole.MarkupLine("[green]All default root items copied successfully[/]");
@@ -362,7 +589,16 @@ public static class NuGetPackageInstaller
         }
     }
 
-    private static async Task<bool> IsFalloutInstalledAsync()
+    private static async Task<bool> RunDotNetCommandAsync(string arguments, string? workingDirectory = null)
+    {
+        return await RunCommandAsync("dotnet", arguments, workingDirectory);
+    }
+
+    /// <summary>
+    /// Runs a dotnet command and returns its stdout instead of echoing it to the console.
+    /// </summary>
+    internal static async Task<(bool Succeeded, string Output, string Error)> RunDotNetCommandCaptureAsync(
+        string arguments, string? workingDirectory = null)
     {
         try
         {
@@ -370,45 +606,30 @@ public static class NuGetPackageInstaller
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "fallout",
-                    Arguments = "--version",
+                    FileName = "dotnet",
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory()
                 }
             };
 
-            // Use async event handlers to prevent buffer deadlock
-            process.OutputDataReceived += (sender, args) => { /* Consume output */ };
-            process.ErrorDataReceived += (sender, args) => { /* Consume error */ };
-
             process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
 
-            // Wait with a 10-second timeout
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
-            var exitTask = process.WaitForExitAsync();
-            var completedTask = await Task.WhenAny(exitTask, timeoutTask);
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
 
-            if (completedTask == timeoutTask)
-            {
-                process.Kill(true);
-                return false;
-            }
+            await Task.WhenAll(outputTask, errorTask, process.WaitForExitAsync());
 
-            return process.ExitCode == 0;
+            return (process.ExitCode == 0, await outputTask, await errorTask);
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            AnsiConsole.MarkupLine($"[red]Error running command: {ex.Message.EscapeMarkup()}[/]");
+            return (false, string.Empty, ex.Message);
         }
-    }
-
-    private static async Task<bool> RunDotNetCommandAsync(string arguments, string? workingDirectory = null)
-    {
-        return await RunCommandAsync("dotnet", arguments, workingDirectory);
     }
 
     private static async Task<bool> RunInteractiveCommandAsync(string command, string arguments, string? workingDirectory = null)

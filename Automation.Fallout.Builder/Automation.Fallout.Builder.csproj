@@ -9,7 +9,7 @@
     <!-- Global Tool Configuration -->
     <PackAsTool>true</PackAsTool>
     <IsPackable>true</IsPackable>
-    <ToolCommandName>aftrnuke</ToolCommandName>
+    <ToolCommandName>autofallout</ToolCommandName>
     <PackageId>Automation.Fallout.Builder</PackageId>
     <Authors>Luke Lanphear   </Authors>
     <Description>A global tool to simplify Fallout build setup across projects</Description>

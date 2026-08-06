@@ -363,16 +363,20 @@ FodyWeavers.xsd
 
 # Local History for JetBrains Rider
 .store/
-.nuke/temp/
-.idea/
-nul
-# Nuke Build
-.nuke/build.schema.json
-.nuke/temp/
-.tmp/
 
 # JetBrains Rider
 .idea/
 
 # Rider DotSettings
 *.DotSettings
+
+# Windows 'nul' device, created accidentally by a shell redirect
+nul
+
+# Fallout Build
+# parameters.json is intentionally NOT ignored - it holds the build
+# configuration (solution path) and belongs in source control.
+.fallout/build.schema.json
+.fallout/temp/
+.tmp/
+
