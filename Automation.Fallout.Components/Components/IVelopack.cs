@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Runtime.InteropServices;
 using Automation.Fallout.Components.DefaultBuilds;
 using Automation.Fallout.Components.Parameters;
 using Fallout.Common;
@@ -15,6 +16,66 @@ public interface IVelopack : IFalloutBuild, IHasSolution, IHasConfiguration, IHa
     IHasCodeSigning,
     IDoTag
 {
+    [Parameter("Version of the Velopack CLI (vpk) to install. Defaults to the newest release.")]
+    string? VelopackCliVersion => TryGetValue(() => VelopackCliVersion);
+
+    /// <summary>
+    /// Installs the Velopack CLI if it is missing and returns a usable path to it.
+    ///
+    /// Every target that shells out to vpk must go through this. The install used to live in the
+    /// body of <see cref="PreVelopack"/>, behind its "no SAS token" early return, so a build
+    /// without AzureBlobSasToken skipped the install and then failed in BuildVelopack with
+    /// "Could not find 'vpk'".
+    /// </summary>
+    string ResolveVelopackCli()
+    {
+        var existing = FindVelopackCli();
+        if (existing != null)
+            return existing;
+
+        Serilog.Log.Information("Velopack CLI (vpk) not found. Installing...");
+
+        var versionArgument = string.IsNullOrWhiteSpace(VelopackCliVersion)
+            ? string.Empty
+            : $" --version {VelopackCliVersion}";
+
+        ProcessTasks.StartProcess("dotnet", $"tool update -g vpk{versionArgument}")
+            .AssertZeroExitCode();
+
+        return FindVelopackCli()
+               ?? throw new Exception(
+                   "Velopack CLI (vpk) is still not resolvable after 'dotnet tool update -g vpk'. " +
+                   $"Looked on PATH and in {DotNetToolsDirectory}.");
+    }
+
+    /// <summary>The dotnet global tool directory, which is not always on PATH for a running process.</summary>
+    AbsolutePath DotNetToolsDirectory =>
+        (AbsolutePath)(Environment.GetEnvironmentVariable("DOTNET_CLI_HOME")
+                       ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+        / ".dotnet" / "tools";
+
+    private string? FindVelopackCli()
+    {
+        // 1. Already on PATH - the normal case on a developer machine.
+        try
+        {
+            var onPath = ToolPathResolver.GetPathExecutable("vpk");
+            if (!string.IsNullOrWhiteSpace(onPath))
+                return onPath;
+        }
+        catch
+        {
+            // GetPathExecutable asserts rather than returning null; fall through to the tools directory.
+        }
+
+        // 2. The global tool directory. A tool installed during this build lands here, but PATH was
+        //    captured when the process started, so step 1 cannot see it on a fresh agent.
+        var executable = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "vpk.exe" : "vpk";
+        var installed = DotNetToolsDirectory / executable;
+
+        return installed.FileExists() ? installed : null;
+    }
+
     Target PreVelopack => t => t
         .DependsOn<ITest>(x => x.Test)
         .DependsOn<IUpdateChangelog>()
@@ -44,12 +105,7 @@ public interface IVelopack : IFalloutBuild, IHasSolution, IHasConfiguration, IHa
             Serilog.Log.Information("Channel: {Channel}", channel);
             Serilog.Log.Information("Download Directory: {Directory}", downloadDir);
 
-            // Ensure vpk is installed before use
-            Serilog.Log.Information("Installing/updating Velopack CLI...");
-            ProcessTasks.StartProcess("dotnet", "tool update -g vpk")//--version 1.0.1")
-                .AssertZeroExitCode();
-
-            var vpkToolPath = ToolPathResolver.GetPathExecutable("vpk");
+            var vpkToolPath = ResolveVelopackCli();
 
             downloadDir.CreateDirectory();
 
@@ -155,7 +211,7 @@ public interface IVelopack : IFalloutBuild, IHasSolution, IHasConfiguration, IHa
                 Serilog.Log.Information("Using icon: {VelopackIconPath}", VelopackIconPath);
             }
 
-            var vpkToolPath = ToolPathResolver.GetPathExecutable("vpk");
+            var vpkToolPath = ResolveVelopackCli();
 
             Serilog.Log.Information("Creating Velopack package...");
             Serilog.Log.Information("Running: vpk {Args}", vpkArgs);
@@ -247,7 +303,7 @@ public interface IVelopack : IFalloutBuild, IHasSolution, IHasConfiguration, IHa
                 vpkArgs += $" --timeout {AzureBlobTimeout}";
             }
 
-            var vpkToolPath = ToolPathResolver.GetPathExecutable("vpk");
+            var vpkToolPath = ResolveVelopackCli();
 
             Serilog.Log.Information("Running: vpk {Args}", vpkArgs.Replace(AzureBlobSasTokenLocal, "***"));
 

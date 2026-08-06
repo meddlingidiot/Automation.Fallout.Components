@@ -20,4 +20,16 @@ All notable changes to this project will be documented in this file.
 - `IPackageAzureDevOps` and `IPackageGitHub` now inherit their push logic from the new interfaces
   instead of inlining it. Their targets, dependencies and behavior are unchanged — a build using
   either one produces an identical target graph.
+- `IVelopack` installs the Velopack CLI only when it is missing, rather than running
+  `dotnet tool update -g vpk` on every `PreVelopack`. Pin a version with `--velopack-cli-version`.
+
+### Fixed
+
+- `IVelopack` failing with `Could not find 'vpk' via where.exe`. The CLI install sat inside
+  `PreVelopack` *after* its "AzureBlobSasToken not provided" early return, so any build without a
+  SAS token skipped the install and then failed in `BuildVelopack`. All three Velopack targets now
+  resolve the CLI through `ResolveVelopackCli()`, which installs it on demand.
+- `IVelopack` resolving `vpk` only from `PATH`. A tool installed during the build lands in the
+  dotnet global tools directory, which the already-running process's `PATH` does not include on a
+  fresh CI agent. The resolver now falls back to that directory.
 
