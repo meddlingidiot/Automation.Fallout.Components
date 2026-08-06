@@ -51,6 +51,7 @@ jobs:
       contents: write
       packages: write
       pull-requests: read
+      workflows: write  
 
     steps:
       # ----------------------------------------------------------------
