@@ -12,14 +12,25 @@
 #
 # Setup (one time):
 #   1. Create the GitHub repo EMPTY - no README, no .gitignore, no license.
-#      A repo seeded with a commit has unrelated history and the first push
-#      is rejected. See "Seeding an existing repo" at the bottom.
-#   2. Create a GitHub fine-grained PAT, scoped to that one repository,
-#      with Repository permissions -> Contents: Read and write.
+#   2. Create a PAT on the account that OWNS the repo (see TOKEN below).
 #   3. Add it to the 'Secrets' variable group as GitHubMirrorPat, marked
 #      secret (the padlock).
 #   4. Set gitHubOwner / gitHubRepo below.
-#   5. Create a new pipeline in Azure DevOps pointing at this file.
+#   5. Create a pipeline in Azure DevOps pointing at this file.
+#
+# TOKEN - this repository contains .github/workflows/, which GitHub protects:
+#
+#   Classic PAT       -> scopes: repo AND workflow
+#                        Without 'workflow', the push is rejected with
+#                        "refusing to allow a Personal Access Token to create
+#                         or update workflow ... without `workflow` scope".
+#
+#   Fine-grained PAT  -> Repository permissions:
+#                          Contents:  Read and write
+#                          Workflows: Read and write
+#                        Must be created BY the account that owns the repo -
+#                        fine-grained tokens cannot reach another account's
+#                        repositories at all.
 #
 # This pipeline never force-pushes. If GitHub has diverged, the push fails
 # loudly instead of destroying commits.
@@ -73,44 +84,172 @@ jobs:
 
       - powershell: |
           $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+          function Write-Section { param([string] $Name) Write-Host ''; Write-Host "===== $Name =====" }
 
           if ([string]::IsNullOrWhiteSpace($env:GITHUB_PAT)) {
-              throw "GitHubMirrorPat is empty. Add it to the 'Secrets' variable group and mark it secret."
+              throw "GitHubMirrorPat is empty. Add it to the 'Secrets' variable group, mark it secret, and confirm this job maps it into the env: block."
           }
 
-          $target = "https://github.com/$($env:GITHUB_OWNER)/$($env:GITHUB_REPO).git"
-          Write-Host "Mirroring to $target"
+          $owner  = $env:GITHUB_OWNER
+          $repo   = $env:GITHUB_REPO
+          $target = "https://github.com/$owner/$repo.git"
 
-          # Authenticate with a per-command header rather than credentials in the
-          # remote URL, so the token is never written into .git/config and never
-          # lands in a process command line.
-          #
-          # This also OVERRIDES the http.extraheader that 'persistCredentials: true'
-          # wrote for Azure DevOps - without it, git would send the Azure DevOps
-          # authorization header to github.com.
-          $pair   = "x-access-token:$($env:GITHUB_PAT)"
-          $basic  = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+          # ================================================================
+          # 1. Context
+          # ================================================================
+          Write-Section 'Context'
+          Write-Host "Agent           : $env:COMPUTERNAME"
+          Write-Host "PowerShell      : $($PSVersionTable.PSVersion)"
+          Write-Host "git             : $(& git --version)"
+          Write-Host "Build reason    : $env:BUILD_REASON"
+          Write-Host "Source ref      : $env:SOURCE_BRANCH"
+          Write-Host "Target          : $target"
+          Write-Host "Mirror all      : $env:MIRROR_ALL"
+          Write-Host "HEAD            : $(& git rev-parse --short HEAD)  $(& git log -1 --format=%s)"
+
+          # ================================================================
+          # 2. Token identity and scopes
+          #    Never prints the token - only what GitHub says about it.
+          # ================================================================
+          Write-Section 'Token'
+
+          $tokenKind = switch -Regex ($env:GITHUB_PAT) {
+              '^github_pat_' { 'fine-grained PAT'; break }
+              '^ghp_'        { 'classic PAT';      break }
+              '^gho_'        { 'OAuth token';      break }
+              '^ghs_'        { 'App installation token'; break }
+              default        { 'unknown / legacy format' }
+          }
+          Write-Host "Token type      : $tokenKind"
+
+          $api = @{
+              Authorization = "Bearer $($env:GITHUB_PAT)"
+              'User-Agent'  = 'azdo-mirror'
+              Accept        = 'application/vnd.github+json'
+          }
+
+          $scopes = $null
+          try {
+              $userResponse = Invoke-WebRequest 'https://api.github.com/user' -Headers $api -UseBasicParsing -ErrorAction Stop
+              $login  = ($userResponse.Content | ConvertFrom-Json).login
+              $scopes = ($userResponse.Headers['X-OAuth-Scopes'] -join ', ').Trim()
+              Write-Host "Token identity  : $login"
+              if ([string]::IsNullOrWhiteSpace($scopes)) {
+                  Write-Host "Token scopes    : (none reported - normal for fine-grained tokens)"
+              } else {
+                  Write-Host "Token scopes    : $scopes"
+              }
+          }
+          catch {
+              Write-Host "##[warning]Could not read /user: $($_.Exception.Message)"
+          }
+
+          # ================================================================
+          # 3. Repository permissions
+          # ================================================================
+          Write-Section 'Repository'
+          try {
+              $repoInfo = Invoke-RestMethod "https://api.github.com/repos/$owner/$repo" -Headers $api -ErrorAction Stop
+          }
+          catch {
+              throw "Cannot read $owner/$repo with this token: $($_.Exception.Message). A 401 means the token is invalid or expired; a 404 means it cannot see the repository."
+          }
+
+          Write-Host "Repository      : $($repoInfo.full_name)"
+          Write-Host "Visibility      : $(if ($repoInfo.private) { 'private' } else { 'PUBLIC' })"
+          Write-Host "Default branch  : $($repoInfo.default_branch)"
+          Write-Host "Permissions     : push=$($repoInfo.permissions.push) admin=$($repoInfo.permissions.admin)"
+
+          if (-not $repoInfo.permissions.push) {
+              throw @"
+          The token can SEE $($repoInfo.full_name) but cannot PUSH to it.
+
+          It belongs to a GitHub account without write access. A fine-grained PAT only
+          reaches repositories owned by the account that created it, so a token made
+          under a different account will never work here.
+
+          Fix: sign in as '$owner', create the token there, and replace GitHubMirrorPat.
+          "@
+          }
+
+          # ================================================================
+          # 4. Workflow-scope preflight
+          #    GitHub rejects any push that touches .github/workflows/ unless
+          #    a classic PAT carries the 'workflow' scope.
+          # ================================================================
+          $workflowFiles = @(& git ls-tree -r --name-only HEAD | Where-Object { $_ -like '.github/workflows/*' })
+          Write-Host "Workflow files  : $($workflowFiles.Count) under .github/workflows/"
+
+          if ($workflowFiles.Count -gt 0 -and $tokenKind -eq 'classic PAT') {
+              $scopeList = @()
+              if ($scopes) { $scopeList = $scopes -split ',' | ForEach-Object { $_.Trim() } }
+
+              if ($scopeList -notcontains 'workflow') {
+                  throw @"
+          This push includes $($workflowFiles.Count) file(s) under .github/workflows/, but the
+          classic PAT does not have the 'workflow' scope. GitHub rejects such pushes with:
+
+            refusing to allow a Personal Access Token to create or update workflow
+            '.github/workflows/build.yml' without 'workflow' scope
+
+          Current scopes: $(if ($scopes) { $scopes } else { '(none)' })
+
+          Fix: GitHub -> Settings -> Developer settings -> Personal access tokens ->
+          Tokens (classic) -> edit the token -> tick 'workflow' (keep 'repo') ->
+          Update, then replace GitHubMirrorPat with the regenerated value.
+          "@
+              }
+              Write-Host "Workflow scope  : present"
+          }
+
+          # ================================================================
+          # 5. Authenticate git
+          #    A per-command header keeps the token out of .git/config and out
+          #    of any process command line. It also overrides the Azure DevOps
+          #    header that 'persistCredentials: true' wrote, which would
+          #    otherwise be sent to github.com. credential.helper is blanked so
+          #    a credential manager on the agent cannot substitute a different
+          #    stored account.
+          # ================================================================
+          $basic  = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$($env:GITHUB_PAT)"))
           $header = "AUTHORIZATION: basic $basic"
+          $gitAuth = @('-c', "http.extraheader=$header", '-c', 'credential.helper=')
+
+          Write-Section 'Remote state before push'
+          & git @gitAuth ls-remote --heads --tags $target
+          if ($LASTEXITCODE -ne 0) { throw "git ls-remote failed (exit $LASTEXITCODE) - the token cannot reach $target" }
 
           function Push-ToGitHub {
               param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $PushArgs)
 
-              & git -c http.extraheader="$header" push @PushArgs
+              Write-Host "> git push $($PushArgs -join ' ')"
+              & git @gitAuth push @PushArgs
               if ($LASTEXITCODE -ne 0) {
-                  throw "git push failed (exit $LASTEXITCODE). If this is a non-fast-forward, GitHub has commits Azure DevOps does not - reconcile by hand."
+                  throw @"
+          git push failed (exit $LASTEXITCODE). Read the 'remote:' lines above; the usual causes are:
+            'without workflow scope'          -> classic PAT is missing the 'workflow' scope (see section 4)
+            'Permission ... denied to <user>' -> the token belongs to <user>, who cannot write here
+            'non-fast-forward' / 'fetch first'-> GitHub has commits Azure DevOps does not; reconcile by hand
+            'protected branch'                -> branch protection on GitHub is rejecting the push
+          "@
               }
           }
 
+          # ================================================================
+          # 6. Push
+          # ================================================================
+          Write-Section 'Push'
           $sourceRef = $env:SOURCE_BRANCH
 
           if ($sourceRef -like 'refs/tags/*') {
-              # Tag build - your TagRelease target pushed v{version}. Mirror that tag.
               $tag = $sourceRef -replace '^refs/tags/', ''
               Write-Host "Tag build: pushing tag $tag"
               Push-ToGitHub $target "refs/tags/$($tag)"
           }
           elseif ($env:MIRROR_ALL -eq 'true') {
-              Write-Host "Mirroring all branches"
+              Write-Host 'Mirroring all branches'
               & git fetch origin --prune --tags "+refs/heads/*:refs/remotes/origin/*"
               if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit $LASTEXITCODE)" }
 
@@ -119,7 +258,6 @@ jobs:
                           Where-Object { $_ -and $_ -ne 'HEAD' }
 
               foreach ($branch in $branches) {
-                  Write-Host "Pushing branch $branch"
                   Push-ToGitHub $target "refs/remotes/origin/$($branch):refs/heads/$($branch)"
               }
               Push-ToGitHub $target '--tags'
@@ -130,12 +268,16 @@ jobs:
               # name from the full ref. The checkout is a detached HEAD, which is
               # why this pushes HEAD rather than a local branch name.
               $branch = $sourceRef -replace '^refs/heads/', ''
-              Write-Host "Pushing branch $branch"
+              Write-Host "Branch build: pushing $branch"
               Push-ToGitHub $target "HEAD:refs/heads/$($branch)"
               Push-ToGitHub $target '--tags'
           }
 
-          Write-Host "Mirror complete."
+          Write-Section 'Remote state after push'
+          & git @gitAuth ls-remote --heads --tags $target
+
+          Write-Host ''
+          Write-Host 'Mirror complete.'
         displayName: 'Push to GitHub'
         env:
           GITHUB_PAT: $(GitHubMirrorPat) # Secret variables are not auto-exposed to scripts
@@ -143,6 +285,7 @@ jobs:
           GITHUB_REPO: $(gitHubRepo)
           MIRROR_ALL: $(mirrorAllBranches)
           SOURCE_BRANCH: $(Build.SourceBranch)
+          BUILD_REASON: $(Build.Reason)
 
 # ============================================================================
 # Seeding an existing (non-empty) GitHub repo
@@ -157,8 +300,10 @@ jobs:
 # ============================================================================
 # Notes
 # ============================================================================
-# - Fine-grained PATs expire. When the push starts failing with 403, regenerate
-#   the token and update GitHubMirrorPat. Set a calendar reminder.
+# - The PAT must be able to write to the repo AND to .github/workflows/.
+#   See TOKEN at the top of this file.
+# - PATs expire. When pushes start failing with 403, regenerate the token and
+#   update GitHubMirrorPat. Set a calendar reminder.
 # - Branch protection on the GitHub side will reject these pushes. Leave the
 #   mirrored branches unprotected, or allow the token to bypass.
 # - This mirrors code only. Work items, PRs, and pipeline history stay in

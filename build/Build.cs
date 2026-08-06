@@ -9,11 +9,11 @@ using Automation.Fallout.Components.Parameters;
 /// Build configuration for PackageBuild
 /// </summary>
 
-public class Build :AzurePipelinesBuild, IShowVersion, IClean, ICompile, IRestore, IScanForSecrets, IRunUnitTests, IRunIntegrationTests, IGenerateCoverageReport, ITest, IUpdateChangelog, IPackageAzureDevOps, ITagRelease, IAnnounceRelease
+public class Build :AzurePipelinesBuild, IShowVersion, IClean, ICompile, IRestore, IScanForSecrets, IRunUnitTests, IRunIntegrationTests, IGenerateCoverageReport, ITest, IUpdateChangelog, IPackageMultiPlatform, ITagRelease, IAnnounceRelease
 {
 
     public static int Main() => Execute<Build>(
-        x => ((IPackageAzureDevOps)x).ReleasePackage);
+        x => ((IPackageMultiPlatform)x).ReleasePackage);
 
     int IHasTests.MinCoverageThreshold => 35;
     bool ITestExecution.UseMicrosoftTestingPlatform => true;

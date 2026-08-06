@@ -232,6 +232,7 @@ class Build : TestBuild, IMyLint { /* ... */ }
 | [`GitHubActionsBuild`](Automation.Fallout.Components/DefaultBuilds/GitHubActionsBuild.cs) | GitHub | Base class exposing `GITHUB_ACTIONS`, run id and run number |
 | [`IPackageAzureDevOps`](Automation.Fallout.Components/Components/IPackageAzureDevOps.cs) | Azure DevOps | Pushes to Azure Artifacts, choosing production or prerelease feed from the branch |
 | [`IPackageGitHub`](Automation.Fallout.Components/Components/IPackageGitHub.cs) | GitHub | Pushes to GitHub Packages for `GitHubOwner` using `GitHubToken` |
+| [`IPackageMultiPlatform`](Automation.Fallout.Components/Components/IPackageMultiPlatform.cs) | Both | One `ReleasePackage` target that routes to whichever platform is running the build. Use when one repo is built by both CI systems |
 | [`ICreateGitHubRelease`](Automation.Fallout.Components/Components/ICreateGitHubRelease.cs) | GitHub | Creates a GitHub release from the tag, with milestone notes and assets |
 | [`IPublishBlazorWasm`](Automation.Fallout.Components/Components/IPublishBlazorWasm.cs) | GitHub | Publishes Blazor WASM and deploys `wwwroot` to a static-site repository |
 
@@ -256,6 +257,7 @@ command line, in `.fallout/parameters.json`, or via environment variable.
 | `ArtifactsDirectoryParam` | `<root>/artifacts` | `IHasArtifacts` |
 | `ProductionFeedId` / `PrereleaseFeedId` | AFTR feed GUIDs | `IHasAzureDevOpsFeeds` |
 | `GitHubOwner` / `GitHubToken` | Required — throws if absent (token falls back to `GITHUB_TOKEN`) | `IHasGitHubPackages` |
+| `PublishTarget` | `Auto` — detects the CI platform; pushes nothing on a local run | `IPackageMultiPlatform` |
 | `VelopackProjectName`, `VelopackChannel`, `KeepMaxReleases`, … | See the interface | `IHasVelopack` |
 
 > The defaults above are the ones in code. `BreakBuildOnWarnings` defaults to **true** and
@@ -334,6 +336,14 @@ the two differ in more than a pipeline file:
 
 Everything else is shared, so a build differs only where it must. `migrate` takes the same choice as
 `--platform GitHubActions|AzureDevOps` (default `AzureDevOps`).
+
+The choice is not permanently binding: a repository built by *both* systems swaps its packaging
+component for [`IPackageMultiPlatform`](#one-repository-both-ci-systems) and keeps everything else.
+
+> **`setup` and `migrate` deliberately do not offer the dual-platform option.** It stays a
+> by-hand change: the scaffolder asks one platform question and generates one platform's wiring.
+> A repository that needs both is an exception, and exceptions are wired and maintained by hand
+> rather than pushed through the generator.
 
 ### Manual setup
 
@@ -471,6 +481,37 @@ differs:
 
 Both trigger `TagRelease` on server builds. Tagging is conservative by design: an existing tag that
 points somewhere other than `HEAD` produces a warning, never a force-push.
+
+### One repository, both CI systems
+
+Those two components each declare a target named `ReleasePackage`, so they cannot be implemented
+side by side — two default interface members with the same name are ambiguous, and target discovery
+would find two targets called `ReleasePackage`. That is why setup picks exactly one.
+
+When a repository is genuinely built by both systems — an Azure DevOps master mirrored to GitHub,
+for instance — implement **`IPackageMultiPlatform`** instead of either one. It composes the
+target-free push interfaces (`IPushPackagesAzureDevOps`, `IPushPackagesGitHub`) and owns the single
+`ReleasePackage` target, routing at runtime:
+
+```csharp
+class Build : AzurePipelinesBuild, ITest, IPackageMultiPlatform, ITagRelease
+{
+    public static int Main() => Execute<Build>(x => ((IPackageMultiPlatform)x).ReleasePackage);
+}
+```
+
+| Running on | Pushes to | Tags the release |
+|---|---|---|
+| Azure DevOps (`TF_BUILD`) | Azure Artifacts | yes |
+| GitHub Actions (`GITHUB_ACTIONS`) | GitHub Packages | no |
+| A developer machine | nothing | no |
+
+**Only Azure DevOps tags.** A mirrored GitHub build that also tagged would create a competing
+`v{version}` at a different commit, and a mirror that pushes tags without forcing would then start
+failing. Override `TagsReleases` to move that ownership.
+
+Force a destination with `--publish-target AzureDevOps|GitHub|Both|None`; `None` runs the target
+without pushing, which is how to exercise it locally.
 
 `IVelopack` builds Windows installers, handling runtime bundling, code signing and Azure blob
 upload, keeping `KeepMaxReleases` (default 3) releases per channel.
