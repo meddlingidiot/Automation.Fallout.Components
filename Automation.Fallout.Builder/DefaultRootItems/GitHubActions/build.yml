@@ -86,13 +86,17 @@ jobs:
       #   3. UpdateChangelog → Package → ReleasePackage (push to feed)
       #   4. TagRelease (if main branch)
       # ----------------------------------------------------------------
+      # The SAS token is mapped through env: rather than passed on the command line, where it
+      # would show up in process listings on the runner. Fallout resolves it from any of
+      # AZURE_BLOB_SAS_TOKEN_LOCAL, AZUREBLOBSASTOKEN or AZURE_BLOB_SAS_TOKEN; an unset secret
+      # expands to empty, in which case the Velopack targets warn and skip the upload.
       - name: Execute Fallout Build
         run: |
           dotnet tool restore
-          dotnet run --project .\build\_build.csproj -- --azure-blob-sas-token "${{ secrets.AZURE_BLOB_SAS_TOKEN }}" --artifacts-directory-param "${{ github.workspace }}\artifacts" --github-owner "${{ github.repository_owner }}"
+          dotnet run --project .\build\_build.csproj -- --artifacts-directory-param "${{ github.workspace }}\artifacts" --github-owner "${{ github.repository_owner }}"
         shell: pwsh
         env:
-          AZUREBLOBSASTOKEN: ${{ secrets.AZURE_BLOB_SAS_TOKEN }}
+          AZURE_BLOB_SAS_TOKEN_LOCAL: ${{ secrets.AZURE_BLOB_SAS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       # ----------------------------------------------------------------
