@@ -43,16 +43,13 @@ env:
 jobs:
   build:
     name: 'Build, Test, and Package'
-    runs-on: 
-      group: Default
-      labels: [ self-hosted, Windows, X64 ]
-
+    runs-on: windows-latest
+ 
     permissions:
       contents: write
       packages: write
       pull-requests: read
-      workflows: write  
-
+      
     steps:
       # ----------------------------------------------------------------
       # Setup: Checkout code with full history for GitVersion
