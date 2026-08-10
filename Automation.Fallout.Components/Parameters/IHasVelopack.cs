@@ -11,8 +11,23 @@ public interface IHasVelopack: IFalloutBuild
                                            "";
     [Parameter] string VelopackChannel => TryGetValue(() => VelopackChannel) ?? 
                                           "win";
-    [Parameter] string VelopackBlobContainer => TryGetValue(() => VelopackBlobContainer) ?? 
-                                                "installers";
+    [Parameter] string VelopackBlobContainer => TryGetValue(() => VelopackBlobContainer) ??
+                                                DefaultBlobContainer;
+
+    /// <summary>The container Azure DevOps releases go to.</summary>
+    const string AzureDevOpsBlobContainer = "staftrinstallers";
+
+    /// <summary>The container GitHub releases go to, and what a local run uses.</summary>
+    const string GitHubBlobContainer = "installers";
+
+    // The two containers hold separate SAS tokens, so the container is not interchangeable: a build
+    // pointed at the wrong one fails the upload with 403 rather than writing somewhere harmless.
+    // Detected from the host rather than configured per repository, because every repository that
+    // gets migrated would otherwise have to remember to pass --velopack-blob-container.
+    private static string DefaultBlobContainer =>
+        string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TF_BUILD"))
+            ? GitHubBlobContainer
+            : AzureDevOpsBlobContainer;
     [Parameter] string AzureBlobAccount => TryGetValue(() => AzureBlobAccount) ?? 
                                            "staftrinstallers";
     [Parameter] string AzureBlobEndpoint => TryGetValue(() => AzureBlobEndpoint) ?? 
