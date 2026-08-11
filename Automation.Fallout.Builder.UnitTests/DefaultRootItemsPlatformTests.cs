@@ -21,6 +21,41 @@ public class DefaultRootItemsPlatformTests
             await Assert.That(names).Contains("GitVersion.yml");
             await Assert.That(names).Contains(".gitleaks.toml");
             await Assert.That(names).Contains("nuget.config");
+            await Assert.That(names).Contains("global.json");
+        }
+    }
+
+    /// <summary>
+    /// The SDK pin is the whole point of shipping global.json: an unpinned repository picks up the
+    /// newest installed SDK, and that is what setup and migrate exist to stop.
+    /// </summary>
+    [Test]
+    [Arguments(BuildPlatform.GitHubActions)]
+    [Arguments(BuildPlatform.AzureDevOps)]
+    public async Task GlobalJson_PinsAnExactSdkVersion(BuildPlatform platform)
+    {
+        var content = NuGetPackageInstaller.GetDefaultRootItems(platform).Single(x => x.FileName == "global.json").Content;
+
+        var sdk = System.Text.Json.JsonDocument.Parse(content).RootElement.GetProperty("sdk");
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(sdk.GetProperty("version").GetString()).IsNotNullOrEmpty();
+            await Assert.That(sdk.GetProperty("rollForward").GetString()).IsEqualTo("disable");
+        }
+    }
+
+    /// <summary>
+    /// global.json sits at the repository root; nothing maps it elsewhere, and it is refreshed on
+    /// every run rather than left in place, so an out of date pin gets corrected.
+    /// </summary>
+    [Test]
+    public async Task GlobalJson_LandsAtTheRootAndIsRefreshed()
+    {
+        using (Assert.Multiple())
+        {
+            await Assert.That(NuGetPackageInstaller.ResolveRootItemDestination("global.json")).IsEqualTo("global.json");
+            await Assert.That(NuGetPackageInstaller.IsProtectedRootItem("global.json")).IsFalse();
         }
     }
 

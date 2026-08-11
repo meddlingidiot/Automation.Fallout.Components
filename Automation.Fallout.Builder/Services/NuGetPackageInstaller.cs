@@ -470,8 +470,8 @@ public static class NuGetPackageInstaller
     }
 
     /// <summary>
-    /// Reads the root config files (nuget.config, GitVersion.yml, azure-pipelines.yml) that ship
-    /// embedded in this tool.
+    /// Reads the root config files (nuget.config, GitVersion.yml, global.json, azure-pipelines.yml)
+    /// that ship embedded in this tool.
     /// </summary>
     /// <summary>
     /// Folder under DefaultRootItems holding the items every platform gets.
