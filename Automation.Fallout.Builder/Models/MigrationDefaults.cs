@@ -10,25 +10,33 @@ public static class MigrationDefaults
     /// A blind Nuke -> Fallout rename leaves the old Nuke.Common version behind (e.g. 10.1.0), which
     /// resolves an unrelated 10.x Fallout.Common from nuget.org and fails restore with NU1605.
     /// </summary>
-    public const string FalloutCommonVersion = "11.0.18";
+    public const string FalloutCommonVersion = "10.4.0";
 
     /// <summary>
     /// The Automation.Fallout.Components version to pin when the project still references the
-    /// Nuke-era Automation.Nuke.Components package.
+    /// Nuke-era Automation.Nuke.Components package. Last resort only - the repository's own feeds
+    /// and its existing pin both win over this, so it does not track routine releases.
     /// </summary>
-    public const string ComponentsVersion = "1.0.2";
+    /// <remarks>
+    /// Bump this only when the Fallout.Common line moves. This package carries a hard dependency on
+    /// one exact <see cref="FalloutCommonVersion"/>, and a pair that disagrees fails restore with
+    /// NU1605. 1.0.14-beta.2 is the first build against 10.4.0; 1.0.13 and earlier need 11.0.18.
+    /// </remarks>
+    public const string ComponentsVersion = "1.0.14-beta.2";
 
     /// <summary>
-    /// The Fallout CLI package id. Fallout.GlobalTool was renamed to Fallout.Cli in 10.3.41 and the
-    /// old id was frozen and unlisted, so the manifest has to point at the new one. The shim command
-    /// is still 'fallout', so nothing that invokes it needs to change.
+    /// The Fallout CLI package id. The tool ships under two ids: fallout.globaltool carries the
+    /// publicly listed 10.x line, fallout.cli carries 10.3.41-10.3.47 and the unlisted 11.x line.
+    /// Both expose the same 'fallout' shim, so nothing that invokes it needs to change.
     /// </summary>
-    public const string GlobalToolPackageId = "fallout.cli";
+    public const string GlobalToolPackageId = "fallout.globaltool";
 
     /// <summary>
-    /// Version of Fallout.Cli written into .config/dotnet-tools.json in place of nuke.globaltool.
+    /// Version of the Fallout CLI written into .config/dotnet-tools.json in place of nuke.globaltool.
+    /// Kept on <see cref="FalloutCommonVersion"/>'s line: fallout.cli has no 10.4.0 build, so pinning
+    /// that id at this version fails 'dotnet tool restore'.
     /// </summary>
-    public const string GlobalToolVersion = "11.0.18";
+    public const string GlobalToolVersion = "10.4.0";
 
     public const string TargetFramework = "net10.0";
 

@@ -26,16 +26,16 @@ public class RootItemMigratorTests
     [Test]
     public async Task MigrateToolManifest_ReplacesNukeGlobalToolAndKeepsEverythingElse()
     {
-        var result = RootItemMigrator.MigrateToolManifest(NukeToolManifest, "11.0.18", out var changed);
+        var result = RootItemMigrator.MigrateToolManifest(NukeToolManifest, "10.4.0", out var changed);
 
         using (Assert.Multiple())
         {
             await Assert.That(changed).IsTrue();
             await Assert.That(result).IsNotNull();
-            await Assert.That(result!).Contains("fallout.cli");
-            await Assert.That(result).Contains("11.0.18");
+            await Assert.That(result!).Contains("fallout.globaltool");
+            await Assert.That(result).Contains("10.4.0");
             await Assert.That(result).DoesNotContain("nuke.globaltool");
-            // The shim command is unchanged by the package rename.
+            // The shim command is the same under either Fallout CLI package id.
             await Assert.That(result).Contains("\"fallout\"");
             // Unrelated tools survive untouched.
             await Assert.That(result).Contains("gitversion.tool");
@@ -44,21 +44,21 @@ public class RootItemMigratorTests
     }
 
     [Test]
-    public async Task MigrateToolManifest_ReplacesTheUnlistedFalloutGlobalTool()
+    public async Task MigrateToolManifest_ReplacesTheOtherFalloutCliPackageId()
     {
-        // Fallout.GlobalTool was itself renamed to Fallout.Cli and unlisted, so a manifest that was
-        // migrated before that rename still needs fixing.
+        // fallout.cli has no build on the 10.x line the migration pins, so a manifest left on that
+        // id cannot restore and has to be moved onto fallout.globaltool.
         var staleManifest = NukeToolManifest
-            .Replace("nuke.globaltool", "fallout.globaltool")
+            .Replace("nuke.globaltool", "fallout.cli")
             .Replace("\"nuke\"", "\"fallout\"");
 
-        var result = RootItemMigrator.MigrateToolManifest(staleManifest, "11.0.18", out var changed);
+        var result = RootItemMigrator.MigrateToolManifest(staleManifest, "10.4.0", out var changed);
 
         using (Assert.Multiple())
         {
             await Assert.That(changed).IsTrue();
-            await Assert.That(result!).Contains("fallout.cli");
-            await Assert.That(result).DoesNotContain("fallout.globaltool");
+            await Assert.That(result!).Contains("fallout.globaltool");
+            await Assert.That(result).DoesNotContain("fallout.cli");
         }
     }
 
@@ -66,10 +66,10 @@ public class RootItemMigratorTests
     public async Task MigrateToolManifest_ReportsNoChangeWhenAlreadyMigrated()
     {
         var alreadyMigrated = NukeToolManifest
-            .Replace("nuke.globaltool", "fallout.cli")
+            .Replace("nuke.globaltool", "fallout.globaltool")
             .Replace("\"nuke\"", "\"fallout\"");
 
-        var result = RootItemMigrator.MigrateToolManifest(alreadyMigrated, "11.0.18", out var changed);
+        var result = RootItemMigrator.MigrateToolManifest(alreadyMigrated, "10.4.0", out var changed);
 
         using (Assert.Multiple())
         {
