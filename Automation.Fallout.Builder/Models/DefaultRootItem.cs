@@ -1,7 +1,7 @@
 namespace Automation.Fallout.Builder.Models;
 
 /// <summary>
-/// A root level config file (nuget.config, GitVersion.yml, azure-pipelines.yml) embedded in this tool.
+/// A root level config file (nuget.config, GitVersion.yml, global.json, azure-pipelines.yml) embedded in this tool.
 /// </summary>
 public class DefaultRootItem
 {

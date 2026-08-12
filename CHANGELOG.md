@@ -2,18 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 1.0.4
+## [1.0.12] - 2026-08-10
+
+### 📝 Other Changes
+
+- Revert back to the installers container ([b870817](../../commit/b870817))
+
+## [1.0.11] - 2026-08-10
+
+### ✨ Features
+
+- feat(velopack): choose default blob container by build host ([192c972](../../commit/192c972))
+
+## [1.0.10] - 2026-08-07
+
+### 🔧 Chores
+
+- chore(build): bump Automation.Fallout.Components package version ([0916589](../../commit/0916589))
+
+## [1.0.9] - 2026-08-07
 
 ### 🐛 Bug Fixes
 
 - fix(azure-pipelines): resolve blob SAS token from variable group ([4fe10dd](../../commit/4fe10dd))
-- fix(velopack): resolve vpk on demand and fall back to dotnet tools ([f929732](../../commit/f929732))
+
+## [1.0.8] - 2026-08-07
 
 ### 📝 Other Changes
 
 - ci(github-actions): simplify build runner configuration ([671a5d4](../../commit/671a5d4))
+
+## [1.0.7] - 2026-08-06
+
+### 📝 Other Changes
+
 - ci(github-actions): grant workflows write permission for build job ([5673e2b](../../commit/5673e2b))
+
+## [1.0.6] - 2026-08-06
+
+### 📝 Other Changes
+
 - ci(github-actions): run build on self-hosted Windows runner ([14d7ef8](../../commit/14d7ef8))
+
+## [1.0.5] - 2026-08-05
+
+### 🐛 Bug Fixes
+
+- fix(velopack): resolve vpk on demand and fall back to dotnet tools ([f929732](../../commit/f929732))
+
+## [1.0.4] - 2026-08-05
+
+### 📝 Other Changes
+
 - ci(pipeline): MultiPlatform deploy ([b8d5120](../../commit/b8d5120))
 
 ## [1.0.3] - 2026-08-05

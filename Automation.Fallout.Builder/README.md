@@ -22,7 +22,7 @@ Additional automation (latest updates):
 - Upgrades the generated Fallout build project to target `net10.0`
 - Adds `PackageDownload` entries for `GitVersion.Tool (6.8.2)` and `ReportGenerator (5.5.11)`
 - Installs `GitVersion.Tool` locally (v6.8.2)
-- Copies default root config files to your repository: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `azure-pipelines.yml`
+- Copies default root config files to your repository: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `global.json`, `azure-pipelines.yml`
 
 ## Installation
 
@@ -70,7 +70,7 @@ The tool will:
 - Add required NuGet packages to your build project (`Automation.Fallout.Components` and `Fallout.Common`)
 - Add `PackageDownload` entries for `GitVersion.Tool (6.8.2)` and `ReportGenerator (5.5.11)`
 - Install local tools (installs `GitVersion.Tool` v6.8.2; Gitleaks is a separate install)
-- Copy default root items: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `azure-pipelines.yml`
+- Copy default root items: `.gitleaks.toml`, `nuget.config`, `GitVersion.yml`, `global.json`, `azure-pipelines.yml`
 - Remove the legacy `Configuration.cs` file in `build/` if present
 - Generate a customized `Build.cs` file based on your selections
 
@@ -100,7 +100,7 @@ from anywhere inside the repository (or pass `--path`). It repairs, in order:
 - Replaces `nuke.globaltool` (and the now-unlisted `fallout.globaltool`) with `fallout.cli` in `.config/dotnet-tools.json`.
 - Points `build.ps1` / `build.sh` / `build.cmd` at `.fallout/temp`.
 - Carries `parameters.json` over from `.nuke/` and deletes the legacy directory.
-- Refreshes `azure-pipelines.yml`, `GitVersion.yml`, `nuget.config` and `.gitleaks.toml` from the Fallout defaults.
+- Refreshes `azure-pipelines.yml`, `GitVersion.yml`, `global.json`, `nuget.config` and `.gitleaks.toml` from the Fallout defaults.
 - Adds the Fallout and Rider entries to `.gitignore`.
 
 Originals are copied to `.fallout/Backup/migrate-<timestamp>/` before anything is rewritten. The command is idempotent — a second run reports no changes.
@@ -112,7 +112,7 @@ Originals are copied to `.fallout/Backup/migrate-<timestamp>/` before anything i
 | `--path`, `-p` | Repository root. Defaults to the repository containing the current directory. |
 | `--dry-run` | Print the change table without writing anything. |
 | `--no-backup` | Skip the `.fallout/Backup` copies. |
-| `--keep-root-items` | Leave `azure-pipelines.yml`, `GitVersion.yml` and `nuget.config` alone. Use this when the pipeline is customised. |
+| `--keep-root-items` | Leave `azure-pipelines.yml`, `GitVersion.yml`, `global.json` and `nuget.config` alone. Use this when the pipeline is customised. |
 | `--refresh-packages` | After repairing the project, run `dotnet add package` to move to the newest feed versions. |
 | `--fallout-version` | Pin `Fallout.Common` explicitly. |
 | `--components-version` | Pin `Automation.Fallout.Components` explicitly. |
@@ -279,6 +279,7 @@ MyProject/
 ├── .gitleaks.toml            # Default gitleaks configuration
 ├── nuget.config              # Default NuGet sources configuration
 ├── GitVersion.yml            # Default GitVersion configuration
+├── global.json               # Pins the .NET SDK version the repository builds with
 ├── azure-pipelines.yml       # Sample Azure Pipelines YAML
 ├── .config/
 │   └── dotnet-tools.json     # Local tool manifest

@@ -32,12 +32,6 @@ on:
       - 'LICENSE'
 
 # ============================================================================
-# Environment Variables
-# ============================================================================
-env:
-  DOTNET_SDK_VERSION: '10.0.x'
-
-# ============================================================================
 # Build Job
 # ============================================================================
 jobs:
@@ -63,10 +57,12 @@ jobs:
       # ----------------------------------------------------------------
       # Setup: Install .NET SDK
       # ----------------------------------------------------------------
-      - name: Install .NET SDK ${{ env.DOTNET_SDK_VERSION }}
+      # The version comes from global.json so the runner installs exactly the SDK the
+      # repository is pinned to - a literal here would drift from the pin.
+      - name: Install the .NET SDK pinned in global.json
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+          global-json-file: global.json
 
       # ----------------------------------------------------------------
       # Setup: Authenticate to GitHub Packages

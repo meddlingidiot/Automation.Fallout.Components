@@ -56,7 +56,7 @@ public static class MigrateCommand
 
         if (options.KeepRootItems)
         {
-            report.Skip("azure-pipelines.yml, GitVersion.yml, nuget.config", "Left in place (--keep-root-items)");
+            report.Skip("azure-pipelines.yml, GitVersion.yml, global.json, nuget.config", "Left in place (--keep-root-items)");
         }
         else
         {

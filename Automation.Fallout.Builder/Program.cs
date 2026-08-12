@@ -57,7 +57,7 @@ class Program
 
         var keepRootItemsOption = new Option<bool>("--keep-root-items")
         {
-            Description = "Leave azure-pipelines.yml, GitVersion.yml and nuget.config untouched."
+            Description = "Leave azure-pipelines.yml, GitVersion.yml, global.json and nuget.config untouched."
         };
 
         var platformOption = new Option<BuildPlatform?>("--platform")

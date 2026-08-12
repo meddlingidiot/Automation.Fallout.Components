@@ -14,7 +14,7 @@ public class MigrationOptions
     /// <summary>Skip copying originals into .fallout/Backup before rewriting them.</summary>
     public bool NoBackup { get; set; }
 
-    /// <summary>Leave azure-pipelines.yml, GitVersion.yml and nuget.config alone.</summary>
+    /// <summary>Leave azure-pipelines.yml, GitVersion.yml, global.json and nuget.config alone.</summary>
     public bool KeepRootItems { get; set; }
 
     /// <summary>

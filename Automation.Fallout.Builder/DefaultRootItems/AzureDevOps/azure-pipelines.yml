@@ -43,8 +43,6 @@ variables:
   - group: Secrets # Contains the blob SAS token for Velopack uploads
   - name: System.Debug
     value: 'false'
-  - name: DotNetSdkVersion
-    value: '10.0.x'
 
 # ============================================================================
 # Build Stage
@@ -71,10 +69,12 @@ stages:
           # ----------------------------------------------------------------
           # Setup: Install .NET SDK
           # ----------------------------------------------------------------
+          # The version comes from global.json so the agent installs exactly the SDK the
+          # repository is pinned to - a literal here would drift from the pin.
           - task: UseDotNet@2
-            displayName: 'Install .NET SDK $(DotNetSdkVersion)'
+            displayName: 'Install the .NET SDK pinned in global.json'
             inputs:
-              version: $(DotNetSdkVersion)
+              useGlobalJson: true
 
           # ----------------------------------------------------------------
           # Setup: Authenticate to Azure Artifacts Feeds
