@@ -92,6 +92,20 @@ public class BuildProjectMigratorTests
         }
     }
 
+    /// <summary>
+    /// Fallout.Common's transitive NuGet.Packaging 6.14.3 puts NuGet.Frameworks 6.14.3.1 beside the
+    /// build host and SDK 10.0.400's MSBuild binds 7.9.0.0, so every target that parses a project
+    /// fails. The migration has to override it, not just rename Nuke packages.
+    /// </summary>
+    [Test]
+    public async Task Migrate_PinsNuGetPackagingToMatchTheSdk()
+    {
+        var result = BuildProjectMigrator.Migrate(BlindlyRenamedProject, new MigrationOptions());
+
+        await Assert.That(result.Xml)
+            .Contains($"""Include="NuGet.Packaging" Version="{MigrationDefaults.NuGetPackagingVersion}" """.TrimEnd());
+    }
+
     [Test]
     public async Task Migrate_HonoursExplicitVersionPins()
     {

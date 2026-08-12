@@ -91,6 +91,10 @@ public static class BuildProjectMigrator
 
         UpsertPackageReference(root, "Fallout.Common", versions.FalloutCommon, centrallyManaged, notes);
         UpsertPackageReference(root, "Automation.Fallout.Components", versions.Components, centrallyManaged, notes);
+
+        // Not a Fallout package: this overrides the NuGet.Packaging that Fallout.Common transitively
+        // pulls so the build host's NuGet.Frameworks matches the SDK's. See MigrationDefaults.
+        UpsertPackageReference(root, "NuGet.Packaging", MigrationDefaults.NuGetPackagingVersion, centrallyManaged, notes);
     }
 
     private static void UpsertPackageReference(XElement root, string packageId, string version, bool centrallyManaged,

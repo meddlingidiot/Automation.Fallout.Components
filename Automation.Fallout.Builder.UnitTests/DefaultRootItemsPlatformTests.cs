@@ -26,13 +26,15 @@ public class DefaultRootItemsPlatformTests
     }
 
     /// <summary>
-    /// The SDK pin is the whole point of shipping global.json: an unpinned repository picks up the
-    /// newest installed SDK, and that is what setup and migrate exist to stop.
+    /// The SDK floor is the whole point of shipping global.json. It pins the feature band rather than
+    /// an exact patch: the band decides which NuGet.Frameworks MSBuild binds, and that has to agree
+    /// with the NuGet.Packaging pinned into build/_build.csproj or project parsing fails outright.
+    /// latestFeature keeps newer patches usable without re-opening that mismatch.
     /// </summary>
     [Test]
     [Arguments(BuildPlatform.GitHubActions)]
     [Arguments(BuildPlatform.AzureDevOps)]
-    public async Task GlobalJson_PinsAnExactSdkVersion(BuildPlatform platform)
+    public async Task GlobalJson_PinsTheSdkFeatureBand(BuildPlatform platform)
     {
         var content = NuGetPackageInstaller.GetDefaultRootItems(platform).Single(x => x.FileName == "global.json").Content;
 
@@ -40,8 +42,8 @@ public class DefaultRootItemsPlatformTests
 
         using (Assert.Multiple())
         {
-            await Assert.That(sdk.GetProperty("version").GetString()).IsNotNullOrEmpty();
-            await Assert.That(sdk.GetProperty("rollForward").GetString()).IsEqualTo("disable");
+            await Assert.That(sdk.GetProperty("version").GetString()).IsEqualTo(MigrationDefaults.SdkVersion);
+            await Assert.That(sdk.GetProperty("rollForward").GetString()).IsEqualTo("latestFeature");
         }
     }
 

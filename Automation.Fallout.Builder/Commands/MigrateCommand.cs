@@ -157,7 +157,10 @@ public static class MigrateCommand
         var pins = new[]
         {
             (PackageId: MigrationPackageVersionResolver.FalloutCommonPackageId, Version: versions.FalloutCommon),
-            (PackageId: MigrationPackageVersionResolver.ComponentsPackageId, Version: versions.Components)
+            (PackageId: MigrationPackageVersionResolver.ComponentsPackageId, Version: versions.Components),
+            // BuildProjectMigrator writes this reference bare like the others, so it needs a
+            // PackageVersion here too or restore fails with NU1010.
+            (PackageId: "NuGet.Packaging", Version: MigrationDefaults.NuGetPackagingVersion)
         };
 
         var xml = propsXml;

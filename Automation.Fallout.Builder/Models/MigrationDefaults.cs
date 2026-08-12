@@ -32,6 +32,21 @@ public static class MigrationDefaults
 
     public const string TargetFramework = "net10.0";
 
+    /// <summary>
+    /// Fallout.Common drags in NuGet.Packaging 6.14.3, which drops NuGet.Frameworks 6.14.3.1 beside
+    /// the build host. SDK 10.0.400's MSBuild binds NuGet.Frameworks 7.9.0.0 when it evaluates
+    /// [MSBuild]::GetTargetFrameworkIdentifier, and the app-local copy wins probing, so every target
+    /// that parses a project dies with a manifest mismatch. Pinning NuGet.Packaging to the version
+    /// whose NuGet.Frameworks matches <see cref="SdkVersion"/> keeps the two in step.
+    /// </summary>
+    public const string NuGetPackagingVersion = "7.9.0";
+
+    /// <summary>
+    /// The .NET SDK written into global.json. Must stay in step with <see cref="NuGetPackagingVersion"/>:
+    /// a different feature band ships a different NuGet.Frameworks and re-opens the mismatch above.
+    /// </summary>
+    public const string SdkVersion = "10.0.400";
+
     public const string GitVersionToolVersion = "6.8.2";
 
     public const string ReportGeneratorVersion = "5.5.11";
