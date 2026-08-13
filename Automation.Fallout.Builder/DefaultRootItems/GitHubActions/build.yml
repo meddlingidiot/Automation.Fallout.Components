@@ -65,6 +65,19 @@ jobs:
           global-json-file: global.json
 
       # ----------------------------------------------------------------
+      # Setup: Install the workloads the solution needs
+      # ----------------------------------------------------------------
+      # Fallout's Clean and Compile targets walk the whole solution, so a head whose
+      # workload is missing (android, ios, wasm-tools) fails with NETSDK1147 before
+      # anything compiles. setup-dotnet installs an SDK but never its workloads, and
+      # workloads are per-feature-band — so a solution that builds on one SDK band can
+      # fail on the next one purely because the runner has no manifests for it.
+      # No argument: this restores whatever the solution in the working directory needs.
+      - name: Restore .NET workloads
+        run: dotnet workload restore
+        shell: pwsh
+
+      # ----------------------------------------------------------------
       # Setup: Authenticate to GitHub Packages
       #           dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GH_PACKAGES_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" || echo "Package source already exists or failed to add, continuing..."
       # ----------------------------------------------------------------
@@ -94,6 +107,15 @@ jobs:
         env:
           AZURE_BLOB_SAS_TOKEN_LOCAL: ${{ secrets.AZURE_BLOB_SAS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          # IPublishBlazorWasm clones the separate static-site repo, which the job's own
+          # GITHUB_TOKEN cannot reach — it needs a PAT with repo scope on that repo.
+          # Build.cs reads this via Environment.GetEnvironmentVariable, so without the
+          # mapping the token is null and Fallout builds the clone URL as
+          # "https://@github.com/..." — git then prompts for a password and dies on a
+          # runner with "Cannot prompt because user interactivity has been disabled".
+          # An unset secret expands to empty and fails identically, so check the secret
+          # exists before assuming the mapping is the problem.
+          STATIC_SITE_GITHUB_TOKEN: ${{ secrets.STATIC_SITE_GITHUB_TOKEN }}
 
       # ----------------------------------------------------------------
       # Publish: NuGet Packages
