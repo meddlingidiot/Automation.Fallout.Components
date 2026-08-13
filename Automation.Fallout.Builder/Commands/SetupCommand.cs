@@ -239,7 +239,15 @@ public static class SetupCommand
             MigrationDefaults.FalloutCommonVersion,
             workingDirectory);
 
-        return componentsAdded && falloutCommonAdded;
+        // Overrides the NuGet.Packaging that arrives transitively with Fallout.Common so the build
+        // host's NuGet.Frameworks matches the SDK pinned in global.json. See MigrationDefaults.
+        var nugetPackagingAdded = await NuGetPackageInstaller.AddPackageToProjectAsync(
+            buildCsproj,
+            "NuGet.Packaging",
+            MigrationDefaults.NuGetPackagingVersion,
+            workingDirectory);
+
+        return componentsAdded && falloutCommonAdded && nugetPackagingAdded;
     }
 
     private static async Task InstallLocalToolsAsync(string workingDirectory)

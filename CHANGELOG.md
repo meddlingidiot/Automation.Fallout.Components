@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - 1.0.13-beta.2
+
+### 🐛 Bug Fixes
+
+- fix(ci): resolve blob SAS token from secrets variable group ([fe22158](../../commit/fe22158))
+
+### 📝 Other Changes
+
+- build: update tool and test package versions ([0471dbf](../../commit/0471dbf))
+
 ## [1.0.12] - 2026-08-10
 
 ### 📝 Other Changes

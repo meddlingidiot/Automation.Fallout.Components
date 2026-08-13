@@ -15,10 +15,11 @@ public static class RootItemMigrator
     private static readonly string[] CarriedConfigFiles = { "parameters.json", "parameters.profile.json" };
 
     /// <summary>
-    /// Tool manifest entries that are superseded by <see cref="MigrationDefaults.GlobalToolPackageId"/>.
-    /// fallout.globaltool is included because it was itself renamed to fallout.cli and then unlisted.
+    /// Tool manifest entries that are replaced by <see cref="MigrationDefaults.GlobalToolPackageId"/>.
+    /// fallout.cli is included because it is the Fallout CLI's other package id and has no build on
+    /// the line <see cref="MigrationDefaults.GlobalToolVersion"/> sits on.
     /// </summary>
-    private static readonly string[] SupersededGlobalTools = { "nuke.globaltool", "fallout.globaltool" };
+    private static readonly string[] SupersededGlobalTools = { "nuke.globaltool", "fallout.cli" };
 
     /// <summary>
     /// Replaces the nuke.globaltool entry in .config/dotnet-tools.json with fallout.cli.

@@ -91,8 +91,11 @@ public static class NuGetPackageInstaller
         return success;
     }
 
-    /// <summary>The package id that Fallout.Cli replaced. It still owns the 'fallout' shim.</summary>
-    private const string SupersededGlobalToolPackageId = "fallout.globaltool";
+    /// <summary>
+    /// The Fallout CLI's other package id. It owns the same 'fallout' shim, so it has to be removed
+    /// before <see cref="MigrationDefaults.GlobalToolPackageId"/> can be installed.
+    /// </summary>
+    private const string SupersededGlobalToolPackageId = "fallout.cli";
 
     /// <summary>
     /// Parses 'dotnet tool list -g' into a package id -> version map.
